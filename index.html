@@ -1,219 +1,125 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="utf-8"/>
-    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-    <title>CioDaModa - Dashboard Principal</title>
-    <!-- Tailwind CSS (CDN para o protótipo local) -->
-    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-    <script id="tailwind-config">
-        tailwind.config = {
-            darkMode: "class",
-            theme: {
-                extend: {
-                    "colors": {
-                        "primary": "#091426",
-                        "surface": "#f8f9ff",
-                        "surface-dim": "#ccdbf4",
-                        "on-primary": "#ffffff",
-                        "on-background": "#0d1c2f",
-                        "primary-container": "#1e293b",
-                        "on-surface-variant": "#45474c",
-                        "error": "#ba1a1a",
-                        "on-error-container": "#93000a",
-                        "error-container": "#ffdad6",
-                        "background": "#f8f9ff",
-                        "secondary": "#0058be"
-                    },
-                    "fontFamily": {
-                        "body-lg": ["Inter"],
-                        "h1": ["Inter"],
-                        "h2": ["Inter"],
-                        "h3": ["Inter"]
-                    }
-                }
-            }
-        }
-    </script>
-    <style>
-        .material-symbols-outlined {
-            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-        }
-        
-        /* Toast Alert Animations */
-        @keyframes slideInRight {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-        @keyframes slideOutRight {
-            from { transform: translateX(0); opacity: 1; }
-            to { transform: translateX(100%); opacity: 0; }
-        }
-        .toast-animate-in { animation: slideInRight 0.3s ease-out forwards; }
-        .toast-animate-out { animation: slideOutRight 0.3s ease-out forwards; }
-        
-        /* Loading Spinner */
-        @keyframes spinner {
-            to {transform: rotate(360deg);}
-        }
-        .loading-spinner {
-            border: 3px solid rgba(255,255,255,0.3);
-            border-top-color: #ffffff;
-            border-radius: 50%;
-            width: 24px;
-            height: 24px;
-            animation: spinner 0.8s linear infinite;
-        }
-        .loading-spinner-dark {
-            border-color: rgba(9, 20, 38, 0.2);
-            border-top-color: #091426;
-        }
-        
-        .hide-scrollbar::-webkit-scrollbar {
-            display: none;
-        }
-        .hide-scrollbar {
-            -ms-overflow-style: none;  /* IE and Edge */
-            scrollbar-width: none;  /* Firefox */
-        }
-    </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CioDaModa - Painel Executivo</title>
+    
+    <!-- Design System Exclusivo -->
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Material Symbols -->
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
 </head>
-<body class="bg-background text-on-background font-body-lg text-body-lg m-0 p-0 overflow-x-hidden min-h-screen">
+<body>
 
-    <!-- Global Fullscreen Loader -->
-    <div id="loader-overlay" class="fixed inset-0 bg-white/80 backdrop-blur-sm z-[9999] flex flex-col items-center justify-center transition-opacity duration-300">
-        <div class="loading-spinner loading-spinner-dark w-12 h-12 border-4 mb-4"></div>
-        <p class="text-primary-container font-medium text-lg">Carregando CioDaModa...</p>
+    <!-- ============================================== -->
+    <!-- GLOBAL LOADER -->
+    <!-- ============================================== -->
+    <div id="global-loader" class="global-loader glass-panel">
+        <div class="spinner"></div>
+        <p style="font-weight: 500; font-family: var(--font-brand);">Processando...</p>
     </div>
 
-    <!-- UI TOAST CONTAINER -->
-    <div id="toast-container" class="fixed bottom-6 right-6 z-[10000] flex flex-col gap-3 pointer-events-none"></div>
-
-    <!-- VIEW 1: TELA DE LOGIN (Stitch Style) -->
-    <div id="login-view" class="hidden absolute inset-0 z-[500] flex items-center justify-center bg-surface-dim/40 backdrop-blur-md">
-        <div class="bg-white rounded-2xl shadow-2xl overflow-hidden w-full max-w-md border border-slate-200">
-            <div class="p-8">
-                <div class="flex items-center gap-3 mb-6">
-                    <div class="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-white">
-                        <span class="material-symbols-outlined text-2xl" data-icon="storefront">storefront</span>
-                    </div>
-                    <div>
-                        <h1 class="text-2xl font-h1 font-bold text-primary">CioDaModa</h1>
-                        <p class="text-sm text-on-surface-variant font-medium">Enterprise Management</p>
-                    </div>
-                </div>
-
-                <div class="mt-8 mb-8 text-center">
-                    <h2 class="text-xl font-h2 font-semibold text-primary-container mb-2">Acesso Restrito</h2>
-                    <p class="text-on-surface-variant text-sm">Autentique-se com sua conta corporativa Google para acessar o painel administrativo.</p>
-                </div>
-
-                <button id="btn-login-google" class="w-full bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 py-3 rounded-xl flex items-center justify-center gap-3 font-semibold transition-all shadow-sm">
-                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" class="w-5 h-5">
-                    Entrar com o Google
-                </button>
-                <div id="login-loading" class="hidden w-full flex items-center justify-center py-3">
-                     <div class="loading-spinner loading-spinner-dark w-6 h-6 border-2"></div>
-                </div>
+    <!-- ============================================== -->
+    <!-- LOGIN SCREEN -->
+    <!-- ============================================== -->
+    <div id="login-view" class="login-screen">
+        <div class="login-card glass-panel">
+            <div class="login-logo">
+                <span class="material-symbols-outlined">shield_person</span>
             </div>
+            <h1 class="login-title">CioDaModa</h1>
+            <p class="login-subtitle">Acesso restrito ao Painel Administrativo Corporativo</p>
             
-            <div class="bg-surface py-4 px-8 border-t border-slate-200 text-center">
-                <p class="text-xs text-slate-500">Desenvolvido com protocolos de Segurança Avançados</p>
-            </div>
+            <button id="btn-login-google" class="btn-google">
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" width="20">
+                Acessar com Google
+            </button>
+            <p id="login-error" class="hidden" style="color: var(--c-danger); margin-top: 16px; font-size: 0.85rem; font-weight: 500;"></p>
         </div>
     </div>
 
-    <!-- VIEW 2: DASHBOARD (APP SPA CONTAINER) -->
-    <div id="app-view" class="hidden w-full h-full">
-        <!-- SideNavBar -->
-        <nav class="flex flex-col h-screen fixed left-0 top-0 w-[280px] z-50 bg-slate-900 text-white font-inter text-sm font-medium tracking-tight border-r border-slate-800 shadow-none">
-            <div class="px-6 py-6 border-b border-slate-800 flex items-center gap-4">
-                <div class="w-10 h-10 rounded-full bg-slate-800 overflow-hidden flex-shrink-0 flex items-center justify-center border border-slate-700">
-                    <span class="material-symbols-outlined text-slate-300">shield_person</span>
+    <!-- ============================================== -->
+    <!-- MAIN APP SHELL -->
+    <!-- ============================================== -->
+    <div id="app-view" class="app-wrapper hidden">
+        
+        <!-- SIDEBAR -->
+        <aside class="sidebar glass-nav-dark">
+            <div class="sidebar-header">
+                <div class="brand-icon">
+                    <span class="material-symbols-outlined">monitoring</span>
                 </div>
-                <div class="flex flex-col">
-                    <span class="text-xl font-black text-white tracking-tight">CioDaModa</span>
-                    <span class="text-xs text-slate-400">Executive Panel</span>
+                <div>
+                    <div class="brand-name">CioDaModa</div>
+                    <div class="brand-sub">Painel Executivo</div>
                 </div>
             </div>
-            <div class="flex-1 overflow-y-auto py-4 hide-scrollbar">
-                <ul class="flex flex-col gap-1 nav-menu">
-                    <li>
-                        <a href="#" data-route="dashb" class="nav-btn bg-white/10 text-white border-l-4 border-blue-500 px-4 py-3 flex items-center gap-3 cursor-pointer transition-all hover:bg-white/5">
-                            <span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
-                            <span>Dashboard</span>
-                        </a>
-                    </li>
-                    <li>
-                        <a href="#" data-route="gestc" class="nav-btn text-slate-400 hover:bg-white/5 hover:text-white px-4 py-3 border-l-4 border-transparent flex items-center gap-3 transition-colors cursor-pointer">
-                            <span class="material-symbols-outlined" data-icon="group">group</span>
-                            <span>Clients (Clientes)</span>
-                        </a>
-                    </li>
-                    <li>
-                        <a href="#" data-route="gestp" class="nav-btn text-slate-400 hover:bg-white/5 hover:text-white px-4 py-3 border-l-4 border-transparent flex items-center gap-3 transition-colors cursor-pointer">
-                            <span class="material-symbols-outlined" data-icon="inventory_2">inventory_2</span>
-                            <span>Products (Estoque)</span>
-                        </a>
-                    </li>
-                    <li>
-                        <a href="#" data-route="gestest" class="nav-btn text-slate-400 hover:bg-white/5 hover:text-white px-4 py-3 border-l-4 border-transparent flex items-center gap-3 transition-colors cursor-pointer">
-                            <span class="material-symbols-outlined" data-icon="swap_horiz">swap_horiz</span>
-                            <span>Transactions (Movimentações)</span>
-                        </a>
-                    </li>
-                </ul>
-            </div>
-            <div class="p-6 border-t border-slate-800">
-                <button id="btn-logout" class="w-full bg-slate-800 hover:bg-red-500 hover:text-white text-slate-400 py-3 rounded-lg flex items-center justify-center gap-2 font-semibold transition-colors">
-                    <span class="material-symbols-outlined" data-icon="logout">logout</span>
-                    Encerrar Sessão
+            
+            <ul class="nav-menu">
+                <li><a href="#" class="nav-link active" data-route="dashb"><span class="material-symbols-outlined">dashboard</span> Dashboard</a></li>
+                <li><a href="#" class="nav-link" data-route="clientes"><span class="material-symbols-outlined">group</span> Clientes</a></li>
+                <li><a href="#" class="nav-link" data-route="fornecedores"><span class="material-symbols-outlined">factory</span> Fornecedores</a></li>
+                <li><a href="#" class="nav-link" data-route="produtos"><span class="material-symbols-outlined">inventory_2</span> Produtos</a></li>
+            </ul>
+
+            <div class="sidebar-footer">
+                <button id="btn-logout" class="btn-logout">
+                    <span class="material-symbols-outlined">logout</span> Encerrar Sessão
                 </button>
             </div>
-        </nav>
+        </aside>
 
-        <!-- TopNavBar -->
-        <header class="flex items-center justify-between px-8 h-16 ml-[280px] z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md text-slate-900 dark:text-slate-100 font-inter text-base fixed top-0 right-0 w-[calc(100%-280px)] border-b border-slate-200 dark:border-slate-800 shadow-sm">
-            <div class="flex items-center">
-                <div class="relative flex items-center hidden md:flex">
-                    <span class="material-symbols-outlined absolute left-3 text-slate-400 text-sm">search</span>
-                    <input class="pl-10 pr-4 py-2 bg-surface-variant/30 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 transition-colors w-64" placeholder="Pesquisar..." type="text"/>
-                </div>
-            </div>
-            <div class="flex items-center gap-4">
-                <button class="text-slate-500 hover:text-slate-900 transition-colors relative">
-                    <span class="material-symbols-outlined">notifications</span>
-                </button>
-                <div class="h-6 w-px bg-slate-200 mx-2"></div>
-                
-                <!-- Dados do usuário logado (Dinamizado) -->
-                <div class="flex items-center gap-3">
-                    <div class="hidden md:block text-right">
-                        <div id="user-display-name" class="text-sm font-semibold text-primary">Carregando...</div>
-                        <div id="user-display-role" class="text-xs text-slate-500">Administrador</div>
+        <!-- MAIN AREA -->
+        <div class="main-wrapper">
+            <!-- TOPBAR -->
+            <header class="topbar glass-panel">
+                <div class="user-profile">
+                    <div class="user-info">
+                        <div id="user-display-name" class="user-name">Administrador</div>
+                        <div class="user-role">Acesso Autorizado</div>
                     </div>
-                    <div class="w-9 h-9 rounded-full overflow-hidden border-2 border-surface-variant">
-                        <img id="user-avatar" src="https://via.placeholder.com/40" alt="Avatar Firebase" class="w-full h-full object-cover"/>
-                    </div>
+                    <img id="user-avatar" src="https://via.placeholder.com/40" class="user-avatar">
                 </div>
-            </div>
-        </header>
+            </header>
 
-        <!-- Dynamic Main Content Area -->
-        <div id="app-main-content">
-            <!-- As tags <main> dos arquivos .html (gerados pelo Google Stitch) serão injetadas via JavaScript aqui -->
-            <main class="ml-[280px] mt-16 p-lg max-w-[1440px] mx-auto min-h-[calc(100vh-64px)] flex items-center justify-center">
-                <div class="text-slate-400 flex flex-col items-center">
-                     <div class="loading-spinner loading-spinner-dark mb-4"></div>
-                     <p>Montando Dashboard...</p>
-                </div>
+            <!-- DYNAMIC VIEWS CONTAINER -->
+            <main id="app-main-content" class="content-area">
+                <!-- Conteúdo Javascript Será Renderizado Aqui -->
             </main>
         </div>
     </div>
 
-    <!-- MAIN APP CONTROLLER -->
+    <!-- ============================================== -->
+    <!-- GLOBAL DRAWERS (FORMULÁRIOS) -->
+    <!-- ============================================== -->
+    <div id="global-drawer" class="drawer-overlay">
+        <div class="drawer-content">
+            <div class="drawer-header">
+                <h3 id="drawer-title" style="font-family: var(--font-brand); font-size: 1.25rem;">Novo Registro</h3>
+                <button id="btn-close-drawer" class="btn-icon"><span class="material-symbols-outlined">close</span></button>
+            </div>
+            
+            <div class="drawer-body">
+                <form id="drawer-dynamic-form">
+                    <!-- Javascript Vai Injetar os labels e inputs dinamicamente -->
+                </form>
+            </div>
+            
+            <div class="drawer-footer">
+                <button id="btn-cancel-drawer" class="btn-secondary">Cancelar</button>
+                <button id="btn-save-drawer" class="btn-primary"><span class="material-symbols-outlined">save</span> Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================== -->
+    <!-- TOAST CONTAINER -->
+    <!-- ============================================== -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- ENGINE CORE -->
     <script type="module" src="app.js"></script>
 </body>
 </html>
