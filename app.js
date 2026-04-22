@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-app.js";
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, collection, addDoc, updateDoc, setDoc, onSnapshot, deleteDoc, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, collection, addDoc, updateDoc, setDoc, onSnapshot, deleteDoc, query, where, getDocs, runTransaction } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-analytics.js";
 
 // ==========================================
@@ -124,7 +124,7 @@ function generateListView(title, desc, entityKey) {
     } else if (entityKey === 'produtos') {
         thead = `<tr><th style="width: 60px; text-align: center;"><span class="material-symbols-outlined text-[18px]">image</span></th><th>Produto</th><th>Fornecedor</th><th>Cor</th><th>Unidade</th><th class="col-actions">Ações</th></tr>`;
     } else if (entityKey === 'transacoes') {
-        thead = `<tr><th>Data Op.</th><th>Tipo</th><th>Produto</th><th>Qtd.</th><th>Valor (R$)</th><th>Prev. Pagamento</th><th class="col-actions">Ações</th></tr>`;
+        thead = `<tr><th>Cód.</th><th>Data Op.</th><th>Tipo Operação</th><th>Frente de Caixa (Itens)</th><th>Valor (R$)</th><th>Prev. Pagamento</th><th class="col-actions">Ações</th></tr>`;
     } else if (entityKey === 'usuarios_permitidos') {
         thead = `<tr><th>Credencial Associada (E-mail Base)</th><th>Privilégio / Role</th><th>Situação</th><th class="col-actions">Ações</th></tr>`;
     }
@@ -194,7 +194,7 @@ const ViewTemplates = {
                 <span class="kpi-value negative" id="dash-pago">R$ 0,00</span>
             </div>
         </div>
-        <div class="dashboard-grid grid-2" style="margin-bottom: 24px;">
+        <div class="dashboard-grid grid-3" style="margin-bottom: 24px;">
             <div class="kpi-card" style="background: var(--c-brand-soft); border-color: var(--c-brand);">
                 <span class="kpi-title" style="color: var(--c-brand-hover)">Total Geral Movimentado no Período</span>
                 <span class="kpi-value" style="color: var(--c-brand-hover)" id="dash-total-geral">R$ 0,00</span>
@@ -202,6 +202,10 @@ const ViewTemplates = {
             <div class="kpi-card" style="background: #ecfdf5; border-color: var(--c-success);">
                 <span class="kpi-title" style="color: #047857">Lucro Bruto Consolidado no Período</span>
                 <span class="kpi-value" style="color: #047857" id="dash-lucro">R$ 0,00</span>
+            </div>
+            <div class="kpi-card" style="background: #fdf4ff; border-color: #d946ef;">
+                <span class="kpi-title" style="color: #a21caf">Cesta de Orçamentos em Espera</span>
+                <span class="kpi-value" style="color: #a21caf" id="dash-orcamento">R$ 0,00</span>
             </div>
         </div>
         <div class="bi-table-container grid-3">
@@ -539,49 +543,78 @@ window.DB_Core = {
             `;
             this.populateFornecedoresSelect();
         } else if(entityKey === 'transacoes') {
-            titleEl.innerText = docId ? "Editando Transação" : "Registrar Nova Operação";
+            titleEl.innerText = docId ? "Editando Carrinho/Orçamento" : "Cadastrar Transação";
+            window.currentCart = [];
             formHTML = `
-                <div class="form-section-title">Natureza da Transação</div>
-                <div class="radio-group-modern">
+                <div class="form-section-title">Natureza Comercial</div>
+                <div class="radio-group-modern" style="grid-template-columns: repeat(3, 1fr);">
                     <label class="radio-option">
                         <input type="radio" name="tipoOp" value="compra" required checked>
                         <div class="radio-card compra">
                             <span class="material-symbols-outlined">south_west</span>
-                            Entrada (Compra)
+                            Entrada/Compra
                         </div>
                     </label>
                     <label class="radio-option">
                         <input type="radio" name="tipoOp" value="venda" required>
                         <div class="radio-card venda">
                             <span class="material-symbols-outlined">north_east</span>
-                            Saída (Venda)
+                            Saída/Venda
+                        </div>
+                    </label>
+                    <label class="radio-option">
+                        <input type="radio" name="tipoOp" value="orcamento" required>
+                        <div class="radio-card orcamento">
+                            <span class="material-symbols-outlined">request_quote</span>
+                            Orçamento
                         </div>
                     </label>
                 </div>
-                <div class="form-group">
-                    <label>Produto Envolvido</label>
-                    <select id="ipt-produto" required class="input-field">
-                        <option value="" disabled selected>Buscando inventário em nuvem...</option>
-                    </select>
-                    <div id="forn-hint-visual" style="margin-top: 8px; font-size: 0.8rem; font-weight: 600; color: var(--c-brand);"></div>
-                </div>
-                <div class="form-row">
-                    <div>
-                        <label>Quantidade (em Metros)</label>
-                        <input type="number" id="ipt-qtd" required class="input-field" placeholder="0" min="1" step="0.01">
+                
+                <div class="form-section-title" style="margin-top:16px;">Carrinho de Itens (Lote)</div>
+                <div class="cart-builder">
+                    <div style="display: flex; align-items: flex-end; gap: 8px; width: 100%;">
+                        <div style="flex:2;">
+                            <label style="font-size: 0.7rem; color: var(--c-text-muted);">Selecione o produto</label>
+                            <select id="ipt-produto" class="input-field" style="padding: 8px;">
+                                <option value="" disabled selected>Buscando...</option>
+                            </select>
+                        </div>
+                        <div style="flex:1;">
+                            <label style="font-size: 0.7rem; color: var(--c-text-muted);">Qtd (M)</label>
+                            <input type="number" id="ipt-qtd" class="input-field" placeholder="0" min="0.01" step="0.01" style="padding: 8px;">
+                        </div>
+                        <div style="flex:1;">
+                            <label style="font-size: 0.7rem; color: var(--c-text-muted);">UNidade (R$)</label>
+                            <input type="text" id="ipt-valor-un" class="input-field monetario-mask" placeholder="0,00" style="padding: 8px;">
+                        </div>
+                        <div>
+                            <button type="button" id="btn-add-item" style="background:var(--c-brand-hover); color:white; border:none; border-radius:6px; padding:9px 12px; cursor:pointer;" title="Injetar no Carrinho">
+                                <span class="material-symbols-outlined" style="font-size:18px;">add_shopping_cart</span>
+                            </button>
+                        </div>
                     </div>
-                    <div>
-                        <label>Valor Total (R$)</label>
-                        <input type="text" id="ipt-valor" required class="input-field" placeholder="R$ 0,00">
+                    
+                    <table class="cart-table" style="margin-top: 12px;">
+                        <thead>
+                            <tr><th>Item</th><th>Metros</th><th>UN (R$)</th><th>SubTotal</th><th>X</th></tr>
+                        </thead>
+                        <tbody id="cart-tbody">
+                            <tr><td colspan="5" style="text-align:center; color:var(--c-text-muted);">Carrinho vazio.</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="cart-info-bar">
+                        CAIXA (TOTAL): <span id="cart-total-display">R$ 0,00</span>
                     </div>
                 </div>
-                <div class="form-row">
+
+                <div class="form-row" style="margin-top: 16px;">
                     <div>
-                        <label>Data da Operação</label>
+                        <label>Data Registro</label>
                         <input type="date" id="ipt-data-op" required class="input-field">
                     </div>
                     <div>
-                        <label>Previs. Pagamento/Recebimento</label>
+                        <label id="lbl-data-pag">Previsão de Recebimento</label>
                         <input type="date" id="ipt-data-pag" required class="input-field">
                     </div>
                 </div>
@@ -590,6 +623,44 @@ window.DB_Core = {
                 const tzoffset = (new Date()).getTimezoneOffset() * 60000;
                 const localISOTime = (new Date(Date.now() - tzoffset)).toISOString().slice(0, 10);
                 document.getElementById('ipt-data-op').value = localISOTime;
+                
+                const rds = document.querySelectorAll('input[name="tipoOp"]');
+                const updateLbl = () => {
+                    const lc = document.getElementById('lbl-data-pag');
+                    if(lc) {
+                        const isC = document.querySelector('input[name="tipoOp"]:checked').value === 'compra';
+                        lc.innerText = isC ? 'Previsão de Pagamento' : 'Previsão de Recebimento';
+                    }
+                };
+                rds.forEach(r => r.addEventListener('change', updateLbl));
+                updateLbl();
+                
+                // Add Item Listener
+                document.getElementById('btn-add-item').addEventListener('click', () => {
+                    const sel = document.getElementById('ipt-produto');
+                    const qtd = parseFloat(document.getElementById('ipt-qtd').value);
+                    const vStr = document.getElementById('ipt-valor-un').value.replace("R$ ","").replace(/\./g, "").replace(",", ".");
+                    const vun = parseFloat(vStr);
+                    
+                    if(!sel.value || isNaN(qtd) || isNaN(vun) || qtd<=0 || vun<=0) {
+                        return showToast("Preencha Produto, Quantidade e Valor unitário de R$ reais corretamente.", "warning");
+                    }
+                    
+                    const opt = sel.options[sel.selectedIndex];
+                    window.currentCart.push({
+                        produtoId: sel.value,
+                        produtoNome: opt.text,
+                        fornecedorNome: opt.dataset.forn || '-',
+                        qtd: qtd,
+                        vun: vun,
+                        subTotal: qtd * vun
+                    });
+                    
+                    document.getElementById('ipt-qtd').value = '';
+                    document.getElementById('ipt-valor-un').value = '';
+                    sel.value = '';
+                    window.DB_Core.renderCartTable();
+                });
             }, 50);
             this.populateProdutosSelect();
         } else if (entityKey === 'usuarios_permitidos') {
@@ -640,17 +711,23 @@ window.DB_Core = {
                     }
                 }
                 
-                // Specific Transaction Edition
+                // Specific Transaction Edition (Carrinho mapping)
                 if (entityKey === 'transacoes') {
                     if (dataToEdit.tipo) {
                         const rdo = document.querySelector(`input[name="tipoOp"][value="${dataToEdit.tipo}"]`);
                         if(rdo) rdo.checked = true;
                     }
-                    if (dataToEdit.valorTotal) {
-                        const valIpt = document.getElementById('ipt-valor');
-                        valIpt.value = (dataToEdit.valorTotal * 100).toString(); // raw mock for strict BRL function
-                        valIpt.dispatchEvent(new Event('input'));
-                    }
+                    
+                    // Fallback to old scalar mode gracefully OR popuplate new map array
+                    window.currentCart = dataToEdit.itens ? [...dataToEdit.itens] : [{
+                        produtoId: dataToEdit.produtoId,
+                        produtoNome: dataToEdit.produtoNome,
+                        fornecedorNome: dataToEdit.fornecedorNome,
+                        qtd: dataToEdit.qtd,
+                        vun: (dataToEdit.valorTotal / dataToEdit.qtd) || 0,
+                        subTotal: dataToEdit.valorTotal
+                    }];
+                    window.DB_Core.renderCartTable();
                 }
             }, 100);
         }
@@ -658,11 +735,47 @@ window.DB_Core = {
         this.toggleDrawer(true);
     },
 
+    renderCartTable() {
+        const tb = document.getElementById('cart-tbody');
+        const totEl = document.getElementById('cart-total-display');
+        if(!tb) return;
+        
+        if(!window.currentCart || window.currentCart.length === 0) {
+            tb.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--c-text-muted);">Cesto Vazio.</td></tr>';
+            if(totEl) totEl.innerText = 'R$ 0,00';
+            return;
+        }
+        
+        tb.innerHTML = '';
+        let bigT = 0;
+        window.currentCart.forEach((it, idx) => {
+            bigT += (it.subTotal || 0);
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td style="font-weight:600; font-size:0.75rem;">${it.produtoNome}</td>
+                <td style="font-weight:600;">${it.qtd} M</td>
+                <td style="font-family:monospace; color:var(--c-text-muted);">${(it.vun||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
+                <td style="font-weight:700; color:var(--c-brandHover);">${(it.subTotal||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
+                <td><button type="button" class="btn-rmv material-symbols-outlined" data-idx="${idx}" title="Retirar Item">delete</button></td>
+            `;
+            tb.appendChild(tr);
+        });
+        
+        if(totEl) totEl.innerText = bigT.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+        
+        tb.querySelectorAll('.btn-rmv').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const i = e.currentTarget.getAttribute('data-idx');
+                window.currentCart.splice(i, 1);
+                this.renderCartTable(); // call re-render self
+            });
+        });
+    },
+
     async populateFornecedoresSelect(preSelect = null) {
         if (!db) return;
         try {
-            // Usa getDocs genérico assíncrono para dropdowns
-            const { getDocs } = await import("https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js");
+            const { getDocs, runTransaction } = await import("https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js");
             const snap = await getDocs(collection(db, 'fornecedores'));
             const select = document.getElementById('ipt-fornecedor');
             if (select) {
@@ -726,41 +839,51 @@ window.DB_Core = {
                     timestamp: new Date()
                 };
             } else if (this.activeEntity === 'transacoes') {
-                const selProd = document.getElementById('ipt-produto');
-                const optSelect = selProd.options[selProd.selectedIndex];
-                const fornecedorOp = optSelect.dataset.forn || '-';
-                const vlrStr = document.getElementById('ipt-valor').value.replace("R$ ","").replace(/\./g, "").replace(",", ".");
-                
+                if(!window.currentCart || window.currentCart.length === 0) {
+                    showToast("Por favor, preencha o carrinho com no mínimo 1 (um) item.", "error");
+                    return toggleGlobalLoader(false);
+                }
+
                 const tipoOp = document.querySelector('input[name="tipoOp"]:checked').value;
-                const reqQtd = parseFloat(document.getElementById('ipt-qtd').value);
+                const reqs = {};
+                window.currentCart.forEach(i => { reqs[i.produtoId] = (reqs[i.produtoId] || 0) + i.qtd; });
                 
-                // Validação Logística Anti-Negativa 
-                if (tipoOp === 'venda') {
-                    const q = query(collection(db, 'transacoes'), where('produtoId', '==', selProd.value));
-                    const snaps = await getDocs(q);
-                    let saldoAtual = 0;
-                    snaps.forEach(dx => {
+                // Validação Logística Anti-Negativa em Lote
+                if (tipoOp === 'venda' || tipoOp === 'orcamento') {
+                    const snapV = await getDocs(collection(db, 'transacoes'));
+                    const estoqueMap = {};
+                    snapV.forEach(dx => {
                         const tr = dx.data();
-                        // Ignora quantia antiga em caso de EDIÇÃO, pois ela será substituida
-                        if (this.editId && dx.id === this.editId) return; 
+                        if (this.editId && dx.id === this.editId) return;
+                        if (tr.tipo === 'orcamento') return;
                         
-                        if (tr.tipo === 'compra') saldoAtual += tr.qtd;
-                        else saldoAtual -= tr.qtd;
+                        const ls = tr.itens || [{ produtoId: tr.produtoId, qtd: tr.qtd }];
+                        ls.forEach(it => {
+                            if(!it.produtoId) return;
+                            if(!estoqueMap[it.produtoId]) estoqueMap[it.produtoId] = 0;
+                            estoqueMap[it.produtoId] += (tr.tipo === 'compra') ? it.qtd : -it.qtd;
+                        });
                     });
                     
-                    if (reqQtd > saldoAtual) {
-                        showToast(`Operação negada! Logística esgotada ou insuficiente. Restam apenas ${saldoAtual} Metros desse Produto em depósito.`, "error");
-                        return; // O formulário não fecha nem sofre submit.
+                    for(let pId in reqs) {
+                        const saldo = estoqueMap[pId] || 0;
+                        if (reqs[pId] > saldo) {
+                            if (tipoOp === 'venda') {
+                                showToast(`Operação Negada! Produto sem saldo suficiente. Resta base ${saldo} Metros.`, "error");
+                                return toggleGlobalLoader(false);
+                            } else {
+                                if(!confirm(`Atenção de Rito: Algum produto orçado possui saldo insuficiente em nuvem (Base real atualizada: ${saldo}M). Deseja manter o Orçamento em espera?`)) {
+                                    return toggleGlobalLoader(false);
+                                }
+                            }
+                        }
                     }
                 }
                 
                 payload = {
                     tipo: tipoOp,
-                    produtoId: selProd.value,
-                    produtoNome: optSelect.text,
-                    fornecedorNome: fornecedorOp,
-                    qtd: reqQtd,
-                    valorTotal: parseFloat(vlrStr),
+                    itens: window.currentCart,
+                    valorTotal: window.currentCart.reduce((a,b)=>a+b.subTotal, 0),
                     dataOp: document.getElementById('ipt-data-op').value,
                     dataPag: document.getElementById('ipt-data-pag').value,
                     timestamp: new Date()
@@ -777,7 +900,7 @@ window.DB_Core = {
                 // Seguranca Anti-Morte Admin
                 if (this.editId && em === window.currentUserEmail && payload.status === 'inativo') {
                     showToast("Trava corporativa: Não é possível inativar/bloquear a si próprio em sessão.", "error");
-                    return;
+                    return toggleGlobalLoader(false);
                 }
             }
 
@@ -789,6 +912,23 @@ window.DB_Core = {
                 await updateDoc(doc(db, this.activeEntity, this.editId), payload);
                 showToast("Registro ATUALIZADO em nuvem com sucesso!", "success");
             } else {
+                if (this.activeEntity === 'transacoes') { // Auto-Incrementador de Série
+                    const counterRef = doc(db, 'metadata', 'counters');
+                    const cType = payload.tipo;
+                    const nextNum = await runTransaction(db, async (t) => {
+                        const sfDoc = await t.get(counterRef);
+                        let n = 1;
+                        if (!sfDoc.exists()) {
+                            t.set(counterRef, { [cType]: 1 });
+                        } else {
+                            n = (sfDoc.data()[cType] || 0) + 1;
+                            t.update(counterRef, { [cType]: n });
+                        }
+                        return n;
+                    });
+                    const px = cType === 'venda' ? 'VEN' : (cType === 'compra' ? 'COM' : 'ORC');
+                    payload.codigo = `${px}-${nextNum.toString().padStart(4, '0')}`;
+                }
                 await addDoc(collection(db, this.activeEntity), payload);
                 showToast("Registro criado nativamente e salvo em nuvem com sucesso!", "success");
             }
@@ -847,16 +987,24 @@ window.DB_Core = {
                     `;
                 } else if (collectionName === 'transacoes') {
                     const isCompra = data.tipo === 'compra';
-                    const iconColor = isCompra ? 'color: var(--c-success);' : 'color: var(--c-brand);';
-                    const icon = isCompra ? 'south_west' : 'north_east';
-                    const trLabel = isCompra ? 'COMPRA' : 'VENDA';
+                    const isOrca = data.tipo === 'orcamento';
+                    let badgeClass = 'badge-success';
+                    let icon = 'south_west';
+                    let trLabel = 'COMPRA';
+                    if(isOrca) { badgeClass = 'badge-neutral'; icon = 'request_quote'; trLabel = 'ORÇAMENTO'; }
+                    else if(!isCompra) { badgeClass = 'badge-info'; icon = 'north_east'; trLabel = 'VENDA'; }
+                    
                     const valFormat = (data.valorTotal || 0).toLocaleString('pt-BR', {style: 'currency', currency:'BRL'});
+                    const cd = data.codigo || '-';
+                    
+                    let arrItens = data.itens || (data.produtoNome ? [{produtoNome: data.produtoNome, qtd: data.qtd}] : []);
+                    let f_str = arrItens.map(i => `<span style="display:inline-block; margin-bottom:2px;">${i.qtd} Mts x <span style="font-weight:600">${i.produtoNome}</span></span>`).join('<br>');
                     
                     tr.innerHTML = `
+                        <td style="font-weight: 700; color:var(--c-text-muted);">${cd}</td>
                         <td style="font-weight: 500;">${data.dataOp.split('-').reverse().join('/')}</td>
-                        <td><span class="badge ${isCompra ? 'badge-success' : 'badge-info'}" style="display:inline-flex; gap:4px; align-items:center;"><span class="material-symbols-outlined" style="font-size:12px;">${icon}</span> ${trLabel}</span></td>
-                        <td style="font-weight: 600;">${data.produtoNome}</td>
-                        <td>${data.qtd}</td>
+                        <td><span class="badge ${badgeClass}" style="display:inline-flex; gap:4px; align-items:center;"><span class="material-symbols-outlined" style="font-size:12px;">${icon}</span> ${trLabel}</span></td>
+                        <td style="font-size: 0.75rem; line-height: 1.2;">${f_str}</td>
                         <td style="font-family: monospace; font-weight:600;">${valFormat}</td>
                         <td style="color: var(--c-text-muted); font-size:0.85rem;">${data.dataPag.split('-').reverse().join('/')}</td>
                     `;
@@ -921,7 +1069,7 @@ window.DB_Core = {
             const snap = await getDocs(collection(db, 'produtos'));
             const select = document.getElementById('ipt-produto');
             if(select) {
-                select.innerHTML = '<option value="" disabled selected>Selecione um Sku na base</option>';
+                select.innerHTML = '<option value="" disabled selected>Selecione o produto</option>';
                 snap.forEach(doc => {
                     const data = doc.data();
                     const opt = document.createElement('option');
@@ -979,36 +1127,49 @@ window.DB_Core = {
         const tzoffset = (new Date()).getTimezoneOffset() * 60000;
         const hojeISO = (new Date(Date.now() - tzoffset)).toISOString().slice(0, 10);
         
-        let aPagar = 0, pago = 0, aReceber = 0, recebido = 0;
+        let aPagar = 0, pago = 0, aReceber = 0, recebido = 0, aOrcamento = 0;
         const estoqueMap = {};
         const rentMap = {};
         let fluxoList = [];
         let totalMovimentado = 0;
 
         this.dashboardDataCache.forEach(d => {
-            // Estoque Histórico
-            if(!estoqueMap[d.produtoId]) estoqueMap[d.produtoId] = { nome: d.produtoNome, saldo: 0 };
-            if(d.tipo === 'compra') estoqueMap[d.produtoId].saldo += d.qtd;
-            else estoqueMap[d.produtoId].saldo -= d.qtd;
-            
-            // Rentabilidade (Histórico Base)
-            if(!rentMap[d.produtoId]) rentMap[d.produtoId] = { nome: d.produtoNome, inv: 0, luc: 0 };
-            if(d.tipo === 'compra') rentMap[d.produtoId].inv += d.valorTotal;
-            else rentMap[d.produtoId].luc += d.valorTotal;
-
-            // Filtros Temporais para os Quadros Principais
+            const isCompra = d.tipo === 'compra';
+            const isOrca = d.tipo === 'orcamento';
             const dPeriodo = d.dataPag.substring(0, 7);
-            if(filtroM && dPeriodo !== filtroM) return;
+            const inPeriod = (!filtroM || dPeriodo === filtroM);
+
+            if(isOrca) {
+                if(inPeriod) aOrcamento += (d.valorTotal || 0);
+                return; // Pula cálculos financeiros e logísticos
+            }
+            
+            // Retro-compatibilidade do Lote Logístico
+            const mItens = d.itens || [{produtoId: d.produtoId, produtoNome: d.produtoNome, qtd: d.qtd, subTotal: d.valorTotal}];
+            mItens.forEach(it => {
+                if(!it.produtoId) return;
+                
+                if(!estoqueMap[it.produtoId]) estoqueMap[it.produtoId] = { nome: it.produtoNome, saldo: 0 };
+                if(isCompra) estoqueMap[it.produtoId].saldo += it.qtd;
+                else estoqueMap[it.produtoId].saldo -= it.qtd;
+                
+                if(!rentMap[it.produtoId]) rentMap[it.produtoId] = { nome: it.produtoNome, inv: 0, luc: 0 };
+                if(isCompra) rentMap[it.produtoId].inv += (it.subTotal || 0);
+                else rentMap[it.produtoId].luc += (it.subTotal || 0);
+            });
+
+            // Filtros Temporais Globais
+            if(!inPeriod) return;
 
             const isPago = d.dataPag <= hojeISO;
-            totalMovimentado += d.valorTotal;
+            totalMovimentado += (d.valorTotal || 0);
 
-            if(d.tipo === 'compra') {
+            if(isCompra) {
                 if(isPago) pago += d.valorTotal; else aPagar += d.valorTotal;
             } else {
                 if(isPago) recebido += d.valorTotal; else aReceber += d.valorTotal;
             }
-            fluxoList.push({...d, isQuitado: isPago});
+            fluxoList.push({...d, isQuitado: isPago, itLength: mItens.length, pName: mItens[0]?.produtoNome});
         });
 
         const cBRL = (val) => val.toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
@@ -1020,6 +1181,7 @@ window.DB_Core = {
         if(el('dash-pago')) el('dash-pago').innerText = cBRL(pago);
         if(el('dash-total-geral')) el('dash-total-geral').innerText = cBRL(totalMovimentado);
         if(el('dash-lucro')) el('dash-lucro').innerText = cBRL((recebido + aReceber) - (pago + aPagar));
+        if(el('dash-orcamento')) el('dash-orcamento').innerText = cBRL(aOrcamento);
 
         fluxoList.sort((a,b) => new Date(a.dataPag) - new Date(b.dataPag));
         if(tbodyFluxo) {
@@ -1045,9 +1207,8 @@ window.DB_Core = {
                     if(md && mb) {
                         mb.innerHTML = `
                             <div class="modal-kv"><span class="modal-kv-key">Status Financeiro</span><span class="modal-kv-val">${stBadge}</span></div>
-                            <div class="modal-kv"><span class="modal-kv-key">Produto/Serviço</span><span class="modal-kv-val">${cx.produtoNome}</span></div>
-                            <div class="modal-kv"><span class="modal-kv-key">Fornecedor Logístico</span><span class="modal-kv-val">${cx.fornecedorNome || '-'}</span></div>
-                            <div class="modal-kv"><span class="modal-kv-key">Volume Tangível</span><span class="modal-kv-val">${cx.qtd} Metros</span></div>
+                            <div class="modal-kv"><span class="modal-kv-key">Recorte do Lote Interno</span><span class="modal-kv-val">${cx.pName} ${cx.itLength>1 ? `(+${cx.itLength-1} outros)`:''}</span></div>
+                            <div class="modal-kv"><span class="modal-kv-key">Natureza / Transação</span><span class="modal-kv-val">${isC ? 'Compra' : 'Venda'} Corporativa</span></div>
                             <div class="modal-kv"><span class="modal-kv-key">Natureza/Transação</span><span class="modal-kv-val">${isC ? 'Compra (Custo)' : 'Venda (Faturamento)'}</span></div>
                             <div class="modal-kv"><span class="modal-kv-key">Valor Agregado (BR)</span><span class="modal-kv-val">${cBRL(cx.valorTotal)}</span></div>
                             <div class="modal-kv"><span class="modal-kv-key">Data Base Mestre</span><span class="modal-kv-val">${cx.dataOp.split('-').reverse().join('/')}</span></div>

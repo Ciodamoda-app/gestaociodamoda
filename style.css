@@ -785,6 +785,12 @@ label {
   color: var(--c-brand-hover);
 }
 
+.radio-option input:checked + .radio-card.orcamento {
+  border-color: #d946ef;
+  background: #fdf4ff;
+  color: #a21caf;
+}
+
 .bi-table-container {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -895,3 +901,14 @@ label {
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
 }
+
+/* Carrinho Multi-Item na Gaveta */
+.cart-builder { margin-top: 16px; border: 1px solid var(--c-border); border-radius: 8px; background: var(--c-body); padding: 12px; }
+.cart-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.cart-table th, .cart-table td { padding: 8px; text-align: left; border-bottom: 1px solid var(--c-border); }
+.cart-table th { color: var(--c-text-muted); font-weight: 500; text-transform: uppercase; font-size: 0.7rem; }
+.cart-table tbody tr:hover { background: rgba(0,0,0,0.01); }
+.cart-table .btn-rmv { color: var(--c-danger); background: transparent; border: none; cursor: pointer; display: inline-flex; padding: 4px; border-radius:4px; }
+.cart-table .btn-rmv:hover { background: #fee2e2; }
+.cart-info-bar { display: flex; justify-content: flex-end; align-items: center; gap: 12px; padding-top: 12px; font-weight: 700; font-size: 1.1rem; color: var(--c-brandHover); border-top: 1px dashed var(--c-border); margin-top: 8px; }
+.dashboard-grid.grid-3 { grid-template-columns: repeat(3, 1fr); gap: 16px; display: grid;}
