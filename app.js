@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-app.js";
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, collection, addDoc, updateDoc, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, collection, addDoc, updateDoc, setDoc, onSnapshot, deleteDoc, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-analytics.js";
 
 // ==========================================
@@ -73,7 +73,12 @@ async function checkAccessLevel(emailCheck) {
     try {
         const userRef = doc(db, "usuarios_permitidos", emailCheck.toLowerCase());
         const docSnap = await getDoc(userRef);
-        return docSnap.exists();
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            if (data.status === 'inativo') return false; 
+            return data;
+        }
+        return false;
     } catch (e) {
         console.error("Erro na verificação de acesso:", e);
         return false;
@@ -95,9 +100,9 @@ async function handleGoogleLogin() {
 
         if (!isPermitido) {
             await signOut(auth);
-            showToast("Acesso Negado: E-mail não consta na coleção usuarios_permitidos.", "error");
+            showToast("Acesso Negado: E-mail não homologado ou pendente de ativação.", "error");
         } else {
-            showToast(`Bem-vindo, ${user.displayName || 'Gestor'}!`, "success");
+            showToast(`Sessão Autorizada! Bem-vindo(a).`, "success");
         }
     } catch (error) {
         showToast("Erro durante autenticação: " + error.code, "error");
@@ -120,6 +125,8 @@ function generateListView(title, desc, entityKey) {
         thead = `<tr><th style="width: 60px; text-align: center;"><span class="material-symbols-outlined text-[18px]">image</span></th><th>Produto</th><th>Fornecedor</th><th>Cor</th><th>Unidade</th><th class="col-actions">Ações</th></tr>`;
     } else if (entityKey === 'transacoes') {
         thead = `<tr><th>Data Op.</th><th>Tipo</th><th>Produto</th><th>Qtd.</th><th>Valor (R$)</th><th>Prev. Pagamento</th><th class="col-actions">Ações</th></tr>`;
+    } else if (entityKey === 'usuarios_permitidos') {
+        thead = `<tr><th>Credencial Associada (E-mail Base)</th><th>Privilégio / Role</th><th>Situação</th><th class="col-actions">Ações</th></tr>`;
     }
 
     return `
@@ -161,9 +168,12 @@ const ViewTemplates = {
                 <h2 class="page-title">Painel Executivo Financeiro</h2>
                 <p class="page-desc">Caixa Analítico e Receituário Comercial Logístico.</p>
             </div>
-            <div>
-                <label style="font-size: 0.75rem; font-weight:600; color:var(--c-text-muted);">Competência (Mês/Ano)</label><br>
-                <input type="month" id="filtro-data-base" class="input-field" style="width: 200px; padding: 8px 12px; cursor: pointer;">
+            <div style="display: flex; gap: 8px; align-items: flex-end;">
+                <div>
+                    <label style="font-size: 0.75rem; font-weight:600; color:var(--c-text-muted);">Competência (Mês/Ano)</label><br>
+                    <input type="month" id="filtro-data-base" class="input-field" style="width: 170px; padding: 8px 12px; cursor: pointer;">
+                </div>
+                <button class="btn-secondary" id="btn-limpar-filtro" style="padding: 9px 12px; font-size: 0.85rem; font-weight: 700;" title="Ver Todo o Histórico">Ver Total</button>
             </div>
         </div>
         <div class="dashboard-grid grid-4">
@@ -233,7 +243,8 @@ const ViewTemplates = {
     clientes: () => generateListView('Clientes', 'Gerencie sua carteira, contatos B2B e endereços.', 'clientes'),
     fornecedores: () => generateListView('Fornecedores', 'Gerencie as fábricas e seus representantes parceiros.', 'fornecedores'),
     produtos: () => generateListView('Produtos em Estoque', 'Cadastro de referências, SKUs unitários e cores.', 'produtos'),
-    transacoes: () => generateListView('Módulo de Transações', 'Registros corporativos de Compra (Investimento/Entrada) e Venda (Faturamento/Saída).', 'transacoes')
+    transacoes: () => generateListView('Módulo de Transações', 'Registros corporativos de Compra (Investimento/Entrada) e Venda (Faturamento/Saída).', 'transacoes'),
+    usuarios_permitidos: () => generateListView('Gestão de Usuários', 'Controle os privilégios e a ativação de colaboradores.', 'usuarios_permitidos')
 };
 
 const SPA = {
@@ -295,8 +306,15 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (!isPermitido) {
                     await signOut(auth);
                 } else {
+                    window.currentUserEmail = user.email.toLowerCase(); // Cache security
+
                     document.getElementById('user-display-name').innerText = user.displayName || user.email.split('@')[0];
                     if (user.photoURL) document.getElementById('user-avatar').src = user.photoURL;
+                    
+                    const navUsers = document.getElementById('nav-sys-users');
+                    if (navUsers) {
+                        navUsers.style.display = isPermitido.role === 'admin' ? 'flex' : 'none';
+                    }
 
                     loginView.classList.add('hidden');
                     appView.classList.remove('hidden');
@@ -357,7 +375,7 @@ window.DB_Core = {
         cancelBtn.onclick = () => this.toggleDrawer(false);
 
         // Dispara leituras se for rota de tabela (Entity Keys batem com collections Firestore)
-        if (['clientes', 'fornecedores', 'produtos', 'transacoes'].includes(routeId)) {
+        if (['clientes', 'fornecedores', 'produtos', 'transacoes', 'usuarios_permitidos'].includes(routeId)) {
             this.activeEntity = routeId;
             this.startReadStream(routeId);
         } else if (routeId === 'dashb') {
@@ -574,6 +592,32 @@ window.DB_Core = {
                 document.getElementById('ipt-data-op').value = localISOTime;
             }, 50);
             this.populateProdutosSelect();
+        } else if (entityKey === 'usuarios_permitidos') {
+            titleEl.innerText = docId ? "Editando Role de Segurança" : "Homologar Novo Operador";
+            const isEditingId = docId ? 'readonly style="background: var(--c-light); cursor:not-allowed;"' : '';
+            formHTML = `
+                <div class="form-section-title">Credenciais Base</div>
+                <div class="form-group">
+                    <label>E-mail Corporativo (Google)</label>
+                    <input type="email" id="ipt-email" ${isEditingId} required class="input-field" placeholder="gestor@ciodamoda.com">
+                </div>
+                <div class="form-row">
+                    <div>
+                        <label>Privilégio (Role)</label>
+                        <select id="ipt-role" required class="input-field">
+                            <option value="comum">Operador Comum</option>
+                            <option value="admin">Administrador Geral</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>Status</label>
+                        <select id="ipt-status" required class="input-field">
+                            <option value="ativo" selected>Usuário ATIVO</option>
+                            <option value="inativo">Conta BLOQUEADA</option>
+                        </select>
+                    </div>
+                </div>
+            `;
         }
 
         formEl.innerHTML = formHTML;
@@ -687,21 +731,61 @@ window.DB_Core = {
                 const fornecedorOp = optSelect.dataset.forn || '-';
                 const vlrStr = document.getElementById('ipt-valor').value.replace("R$ ","").replace(/\./g, "").replace(",", ".");
                 
+                const tipoOp = document.querySelector('input[name="tipoOp"]:checked').value;
+                const reqQtd = parseFloat(document.getElementById('ipt-qtd').value);
+                
+                // Validação Logística Anti-Negativa 
+                if (tipoOp === 'venda') {
+                    const q = query(collection(db, 'transacoes'), where('produtoId', '==', selProd.value));
+                    const snaps = await getDocs(q);
+                    let saldoAtual = 0;
+                    snaps.forEach(dx => {
+                        const tr = dx.data();
+                        // Ignora quantia antiga em caso de EDIÇÃO, pois ela será substituida
+                        if (this.editId && dx.id === this.editId) return; 
+                        
+                        if (tr.tipo === 'compra') saldoAtual += tr.qtd;
+                        else saldoAtual -= tr.qtd;
+                    });
+                    
+                    if (reqQtd > saldoAtual) {
+                        showToast(`Operação negada! Logística esgotada ou insuficiente. Restam apenas ${saldoAtual} Metros desse Produto em depósito.`, "error");
+                        return; // O formulário não fecha nem sofre submit.
+                    }
+                }
+                
                 payload = {
-                    tipo: document.querySelector('input[name="tipoOp"]:checked').value,
+                    tipo: tipoOp,
                     produtoId: selProd.value,
                     produtoNome: optSelect.text,
                     fornecedorNome: fornecedorOp,
-                    qtd: parseFloat(document.getElementById('ipt-qtd').value),
+                    qtd: reqQtd,
                     valorTotal: parseFloat(vlrStr),
                     dataOp: document.getElementById('ipt-data-op').value,
                     dataPag: document.getElementById('ipt-data-pag').value,
                     timestamp: new Date()
                 };
+            } else if (this.activeEntity === 'usuarios_permitidos') {
+                const em = document.getElementById('ipt-email').value.trim().toLowerCase();
+                payload = {
+                    email: em,
+                    role: document.getElementById('ipt-role').value,
+                    status: document.getElementById('ipt-status').value,
+                    timestamp: new Date()
+                };
+                
+                // Seguranca Anti-Morte Admin
+                if (this.editId && em === window.currentUserEmail && payload.status === 'inativo') {
+                    showToast("Trava corporativa: Não é possível inativar/bloquear a si próprio em sessão.", "error");
+                    return;
+                }
             }
 
             // Push or Update Firestore
-            if (this.editId) {
+            if (this.activeEntity === 'usuarios_permitidos') {
+                await setDoc(doc(db, "usuarios_permitidos", payload.email), payload);
+                showToast(this.editId ? "Acessos atualizados na nuvem!" : "Novo usuário homologado com sucesso!", "success");
+            } else if (this.editId) {
                 await updateDoc(doc(db, this.activeEntity, this.editId), payload);
                 showToast("Registro ATUALIZADO em nuvem com sucesso!", "success");
             } else {
@@ -776,6 +860,14 @@ window.DB_Core = {
                         <td style="font-family: monospace; font-weight:600;">${valFormat}</td>
                         <td style="color: var(--c-text-muted); font-size:0.85rem;">${data.dataPag.split('-').reverse().join('/')}</td>
                     `;
+                } else if (collectionName === 'usuarios_permitidos') {
+                    const st = data.status === 'ativo' ? '<span class="badge badge-success">ATIVO</span>' : '<span class="badge badge-neutral" style="background:#fecdd3;color:#881337;">INATIVO</span>';
+                    const rl = data.role === 'admin' ? '<span style="color:var(--c-brandHover);font-weight:700;">Administrador</span>' : '<span style="color:var(--c-text-muted);">Comum</span>';
+                    tr.innerHTML = `
+                        <td style="font-weight:600; font-size:0.9rem;">${data.email || docSnap.id}</td>
+                        <td>${rl}</td>
+                        <td>${st}</td>
+                    `;
                 }
 
                 // Injeção da Coluna de Deletar Centralizada
@@ -798,6 +890,10 @@ window.DB_Core = {
                 });
                 
                 tdAction.querySelector('.js-del').addEventListener('click', async () => {
+                    if (collectionName === 'usuarios_permitidos' && docSnap.id === window.currentUserEmail) {
+                        showToast("Trava corporativa: Não é possível excluir a própria conta logada do ecossistema.", "error");
+                        return;
+                    }
                     if (confirm("Confirma a exclusão deste item corporativo? Esta ação é irreversível e ocorrerá em nuvem na hora.")) {
                         try {
                             await deleteDoc(doc(db, collectionName, docSnap.id));
@@ -852,14 +948,17 @@ window.DB_Core = {
     startDashboardStream() {
         if(!db) return;
         
-        // Auto-select current mês 
-        const d = new Date();
-        const m = (d.getMonth() + 1).toString().padStart(2, '0');
         const filtro = document.getElementById('filtro-data-base');
-        if(filtro && !filtro.value) filtro.value = `${d.getFullYear()}-${m}`;
+        const btnLimpar = document.getElementById('btn-limpar-filtro');
         
         if (filtro) {
             filtro.addEventListener('change', () => this.renderBI());
+        }
+        if (btnLimpar && filtro) {
+            btnLimpar.addEventListener('click', () => { 
+                filtro.value = ''; 
+                this.renderBI(); 
+            });
         }
 
         this.unsubscribeCurrent = onSnapshot(collection(db, 'transacoes'), (snapshot) => {
