@@ -1,100 +1,219 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CioDaModa - Admin Dashboard</title>
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Google Material Symbols -->
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
-    <link rel="stylesheet" href="style.css">
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>CioDaModa - Dashboard Principal</title>
+    <!-- Tailwind CSS (CDN para o protótipo local) -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary": "#091426",
+                        "surface": "#f8f9ff",
+                        "surface-dim": "#ccdbf4",
+                        "on-primary": "#ffffff",
+                        "on-background": "#0d1c2f",
+                        "primary-container": "#1e293b",
+                        "on-surface-variant": "#45474c",
+                        "error": "#ba1a1a",
+                        "on-error-container": "#93000a",
+                        "error-container": "#ffdad6",
+                        "background": "#f8f9ff",
+                        "secondary": "#0058be"
+                    },
+                    "fontFamily": {
+                        "body-lg": ["Inter"],
+                        "h1": ["Inter"],
+                        "h2": ["Inter"],
+                        "h3": ["Inter"]
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        
+        /* Toast Alert Animations */
+        @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes slideOutRight {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(100%); opacity: 0; }
+        }
+        .toast-animate-in { animation: slideInRight 0.3s ease-out forwards; }
+        .toast-animate-out { animation: slideOutRight 0.3s ease-out forwards; }
+        
+        /* Loading Spinner */
+        @keyframes spinner {
+            to {transform: rotate(360deg);}
+        }
+        .loading-spinner {
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top-color: #ffffff;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spinner 0.8s linear infinite;
+        }
+        .loading-spinner-dark {
+            border-color: rgba(9, 20, 38, 0.2);
+            border-top-color: #091426;
+        }
+        
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+    </style>
 </head>
-<body>
+<body class="bg-background text-on-background font-body-lg text-body-lg m-0 p-0 overflow-x-hidden min-h-screen">
 
-    <!-- Overlay de Carregamento Global -->
-    <div id="loader-overlay" class="loader-overlay">
-        <div class="spinner"></div>
+    <!-- Global Fullscreen Loader -->
+    <div id="loader-overlay" class="fixed inset-0 bg-white/80 backdrop-blur-sm z-[9999] flex flex-col items-center justify-center transition-opacity duration-300">
+        <div class="loading-spinner loading-spinner-dark w-12 h-12 border-4 mb-4"></div>
+        <p class="text-primary-container font-medium text-lg">Carregando CioDaModa...</p>
     </div>
 
-    <!-- Container de Toasts (Alertas) -->
-    <div id="toast-container" class="toast-container"></div>
+    <!-- UI TOAST CONTAINER -->
+    <div id="toast-container" class="fixed bottom-6 right-6 z-[10000] flex flex-col gap-3 pointer-events-none"></div>
 
-    <!-- Tela de Login -->
-    <div id="login-view" class="view login-view">
-        <div class="login-card">
-            <div class="brand-logo">
-                <span class="material-symbols-outlined logo-icon">storefront</span>
-                <h1>CioDaModa</h1>
+    <!-- VIEW 1: TELA DE LOGIN (Stitch Style) -->
+    <div id="login-view" class="hidden absolute inset-0 z-[500] flex items-center justify-center bg-surface-dim/40 backdrop-blur-md">
+        <div class="bg-white rounded-2xl shadow-2xl overflow-hidden w-full max-w-md border border-slate-200">
+            <div class="p-8">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-white">
+                        <span class="material-symbols-outlined text-2xl" data-icon="storefront">storefront</span>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl font-h1 font-bold text-primary">CioDaModa</h1>
+                        <p class="text-sm text-on-surface-variant font-medium">Enterprise Management</p>
+                    </div>
+                </div>
+
+                <div class="mt-8 mb-8 text-center">
+                    <h2 class="text-xl font-h2 font-semibold text-primary-container mb-2">Acesso Restrito</h2>
+                    <p class="text-on-surface-variant text-sm">Autentique-se com sua conta corporativa Google para acessar o painel administrativo.</p>
+                </div>
+
+                <button id="btn-login-google" class="w-full bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 py-3 rounded-xl flex items-center justify-center gap-3 font-semibold transition-all shadow-sm">
+                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" class="w-5 h-5">
+                    Entrar com o Google
+                </button>
+                <div id="login-loading" class="hidden w-full flex items-center justify-center py-3">
+                     <div class="loading-spinner loading-spinner-dark w-6 h-6 border-2"></div>
+                </div>
             </div>
-            <p class="login-subtitle">Acesso restrito ao painel administrativo</p>
-            <button id="btn-login-google" class="btn-google">
-                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google Logo">
-                Entrar com Google
-            </button>
+            
+            <div class="bg-surface py-4 px-8 border-t border-slate-200 text-center">
+                <p class="text-xs text-slate-500">Desenvolvido com protocolos de Segurança Avançados</p>
+            </div>
         </div>
     </div>
 
-    <!-- Dashboard Completo -->
-    <div id="dashboard-view" class="view dashboard-view hidden">
-        <!-- Sidebar Navigation -->
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <span class="material-symbols-outlined logo-icon">storefront</span>
-                <h2>CioDaModa</h2>
+    <!-- VIEW 2: DASHBOARD (APP SPA CONTAINER) -->
+    <div id="app-view" class="hidden w-full h-full">
+        <!-- SideNavBar -->
+        <nav class="flex flex-col h-screen fixed left-0 top-0 w-[280px] z-50 bg-slate-900 text-white font-inter text-sm font-medium tracking-tight border-r border-slate-800 shadow-none">
+            <div class="px-6 py-6 border-b border-slate-800 flex items-center gap-4">
+                <div class="w-10 h-10 rounded-full bg-slate-800 overflow-hidden flex-shrink-0 flex items-center justify-center border border-slate-700">
+                    <span class="material-symbols-outlined text-slate-300">shield_person</span>
+                </div>
+                <div class="flex flex-col">
+                    <span class="text-xl font-black text-white tracking-tight">CioDaModa</span>
+                    <span class="text-xs text-slate-400">Executive Panel</span>
+                </div>
             </div>
-            
-            <nav class="sidebar-nav">
-                <a href="#" class="nav-item active" data-module="inicio">
-                    <span class="material-symbols-outlined">dashboard</span>
-                    <span>Início</span>
-                </a>
-                <a href="#" class="nav-item" data-module="inventario">
-                    <span class="material-symbols-outlined">inventory_2</span>
-                    <span>Inventário</span>
-                </a>
-                <a href="#" class="nav-item" data-module="configuracoes">
-                    <span class="material-symbols-outlined">settings</span>
-                    <span>Configurações</span>
-                </a>
-            </nav>
+            <div class="flex-1 overflow-y-auto py-4 hide-scrollbar">
+                <ul class="flex flex-col gap-1 nav-menu">
+                    <li>
+                        <a href="#" data-route="dashb" class="nav-btn bg-white/10 text-white border-l-4 border-blue-500 px-4 py-3 flex items-center gap-3 cursor-pointer transition-all hover:bg-white/5">
+                            <span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+                            <span>Dashboard</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" data-route="gestc" class="nav-btn text-slate-400 hover:bg-white/5 hover:text-white px-4 py-3 border-l-4 border-transparent flex items-center gap-3 transition-colors cursor-pointer">
+                            <span class="material-symbols-outlined" data-icon="group">group</span>
+                            <span>Clients (Clientes)</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" data-route="gestp" class="nav-btn text-slate-400 hover:bg-white/5 hover:text-white px-4 py-3 border-l-4 border-transparent flex items-center gap-3 transition-colors cursor-pointer">
+                            <span class="material-symbols-outlined" data-icon="inventory_2">inventory_2</span>
+                            <span>Products (Estoque)</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" data-route="gestest" class="nav-btn text-slate-400 hover:bg-white/5 hover:text-white px-4 py-3 border-l-4 border-transparent flex items-center gap-3 transition-colors cursor-pointer">
+                            <span class="material-symbols-outlined" data-icon="swap_horiz">swap_horiz</span>
+                            <span>Transactions (Movimentações)</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+            <div class="p-6 border-t border-slate-800">
+                <button id="btn-logout" class="w-full bg-slate-800 hover:bg-red-500 hover:text-white text-slate-400 py-3 rounded-lg flex items-center justify-center gap-2 font-semibold transition-colors">
+                    <span class="material-symbols-outlined" data-icon="logout">logout</span>
+                    Encerrar Sessão
+                </button>
+            </div>
+        </nav>
 
-            <div class="sidebar-footer">
-                <div class="user-info">
-                    <img id="user-avatar" src="" alt="Avatar do usuário" class="avatar">
-                    <div class="user-details">
-                        <span id="user-name" class="name">Carregando...</span>
-                        <span id="user-email" class="email">...</span>
+        <!-- TopNavBar -->
+        <header class="flex items-center justify-between px-8 h-16 ml-[280px] z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md text-slate-900 dark:text-slate-100 font-inter text-base fixed top-0 right-0 w-[calc(100%-280px)] border-b border-slate-200 dark:border-slate-800 shadow-sm">
+            <div class="flex items-center">
+                <div class="relative flex items-center hidden md:flex">
+                    <span class="material-symbols-outlined absolute left-3 text-slate-400 text-sm">search</span>
+                    <input class="pl-10 pr-4 py-2 bg-surface-variant/30 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 transition-colors w-64" placeholder="Pesquisar..." type="text"/>
+                </div>
+            </div>
+            <div class="flex items-center gap-4">
+                <button class="text-slate-500 hover:text-slate-900 transition-colors relative">
+                    <span class="material-symbols-outlined">notifications</span>
+                </button>
+                <div class="h-6 w-px bg-slate-200 mx-2"></div>
+                
+                <!-- Dados do usuário logado (Dinamizado) -->
+                <div class="flex items-center gap-3">
+                    <div class="hidden md:block text-right">
+                        <div id="user-display-name" class="text-sm font-semibold text-primary">Carregando...</div>
+                        <div id="user-display-role" class="text-xs text-slate-500">Administrador</div>
+                    </div>
+                    <div class="w-9 h-9 rounded-full overflow-hidden border-2 border-surface-variant">
+                        <img id="user-avatar" src="https://via.placeholder.com/40" alt="Avatar Firebase" class="w-full h-full object-cover"/>
                     </div>
                 </div>
-                <button id="btn-logout" class="btn-icon" title="Sair">
-                    <span class="material-symbols-outlined">logout</span>
-                </button>
             </div>
-        </aside>
+        </header>
 
-        <!-- Main Content Area -->
-        <main class="main-content">
-            <header class="top-header">
-                <button id="btn-menu-toggle" class="btn-icon menu-toggle">
-                    <span class="material-symbols-outlined">menu</span>
-                </button>
-                <h2 id="current-module-title">Início</h2>
-            </header>
-            
-            <div id="content-area" class="content-area">
-                <!-- O conteúdo dos módulos será injetado aqui -->
-                <div class="module-content" id="module-inicio">
-                    <h3>Bem-vindo ao CioDaModa Admin 2.0</h3>
-                    <p>Selecione um módulo no menu lateral para começar.</p>
+        <!-- Dynamic Main Content Area -->
+        <div id="app-main-content">
+            <!-- As tags <main> dos arquivos .html (gerados pelo Google Stitch) serão injetadas via JavaScript aqui -->
+            <main class="ml-[280px] mt-16 p-lg max-w-[1440px] mx-auto min-h-[calc(100vh-64px)] flex items-center justify-center">
+                <div class="text-slate-400 flex flex-col items-center">
+                     <div class="loading-spinner loading-spinner-dark mb-4"></div>
+                     <p>Montando Dashboard...</p>
                 </div>
-            </div>
-        </main>
+            </main>
+        </div>
     </div>
 
-    <!-- O app deve ser carregado como módulo para uso em v10 do Firebase e ES6 -->
-    <script type="module" src="main.js"></script>
+    <!-- MAIN APP CONTROLLER -->
+    <script type="module" src="app.js"></script>
 </body>
 </html>
