@@ -1,20 +1,23 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-app.js";
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js";
 import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-analytics.js";
 
 // ==========================================
 // 1. CONFIGURAÇÃO DO FIREBASE
 // ==========================================
 const firebaseConfig = {
-  apiKey: "SUA_API_KEY",
-  authDomain: "SEU_AUTH_DOMAIN",
-  projectId: "SEU_PROJECT_ID",
-  storageBucket: "SEU_STORAGE_BUCKET",
-  messagingSenderId: "SEU_MESSAGING_SENDER_ID",
-  appId: "SEU_APP_ID"
+    apiKey: "AIzaSyAmp83VFJo6u3uffqviTLW_CTTKLMCus7g",
+    authDomain: "ciodamoda-69283.firebaseapp.com",
+    projectId: "ciodamoda-69283",
+    storageBucket: "ciodamoda-69283.firebasestorage.app",
+    messagingSenderId: "973007239262",
+    appId: "1:973007239262:web:c2203326675e54baf69ccf",
+    measurementId: "G-WH24TW2SYB"
 };
 
-let app, auth, db;
+
+let app, auth, db, analytics;
 const provider = new GoogleAuthProvider();
 
 // ==========================================
@@ -26,12 +29,11 @@ function showToast(message, type = "error") {
 
     const div = document.createElement('div');
     const isError = type === 'error';
-    
+
     // Classes Tailwind para o Toast
-    div.className = `toast-animate-in flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border ${
-        isError ? 'bg-red-50 border-red-200 text-red-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
-    } min-w-[300px] pointer-events-auto`;
-    
+    div.className = `toast-animate-in flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border ${isError ? 'bg-red-50 border-red-200 text-red-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+        } min-w-[300px] pointer-events-auto`;
+
     div.innerHTML = `
         <span class="material-symbols-outlined ${isError ? 'text-red-500' : 'text-emerald-500'}">
             ${isError ? 'cancel' : 'check_circle'}
@@ -50,7 +52,7 @@ function showToast(message, type = "error") {
 function setActionLoading(isLoading) {
     const btnGoogle = document.getElementById('btn-login-google');
     const loadingView = document.getElementById('login-loading');
-    
+
     if (isLoading) {
         btnGoogle.classList.add('hidden');
         loadingView.classList.remove('hidden');
@@ -97,9 +99,9 @@ async function handleGoogleLogin() {
         setActionLoading(true);
         const result = await signInWithPopup(auth, provider);
         const user = result.user;
-        
+
         const isAllowed = await checkAccessLevel(user.email);
-        
+
         if (!isAllowed) {
             await signOut(auth);
             setActionLoading(false);
@@ -120,17 +122,17 @@ async function handleGoogleLogin() {
 // ==========================================
 const SPA = {
     currentRoute: null,
-    
+
     async navigate(routeId) {
         if (this.currentRoute === routeId) return;
-        
+
         toggleGlobalLoader(true);
-        
+
         // Atualiza UI de Menus Laterais (marcando Ativo vizualmente)
         document.querySelectorAll('.nav-btn').forEach(btn => {
             btn.classList.remove('bg-white/10', 'text-white', 'border-blue-500');
             btn.classList.add('border-transparent', 'text-slate-400');
-            
+
             if (btn.getAttribute('data-route') === routeId) {
                 btn.classList.add('bg-white/10', 'text-white', 'border-blue-500');
                 btn.classList.remove('border-transparent', 'text-slate-400');
@@ -138,28 +140,28 @@ const SPA = {
         });
 
         const appMainContent = document.getElementById('app-main-content');
-        
+
         try {
             // Trazemos o arquivo .html correspodente do protótipo
             const response = await fetch(`${routeId}.html`);
             if (!response.ok) throw new Error("Rota não encontrada");
-            
+
             const htmlText = await response.text();
-            
+
             // Fazemos um Parsing silencioso do HTML para arrancar Apenas a tag <main>
             const parser = new DOMParser();
             const docFragment = parser.parseFromString(htmlText, 'text/html');
             const newMain = docFragment.querySelector('main');
-            
+
             if (newMain) {
                 appMainContent.innerHTML = newMain.outerHTML;
             } else {
                 appMainContent.innerHTML = `<main class="ml-[280px] mt-16 p-lg text-center opacity-50">Main content not found</main>`;
             }
-            
+
             this.currentRoute = routeId;
-            
-        } catch(e) {
+
+        } catch (e) {
             showToast(`Falha ao carregar vista estática: ${e.message}`, "error");
         } finally {
             toggleGlobalLoader(false);
@@ -182,14 +184,17 @@ const SPA = {
 // 5. INICIALIZAÇÃO DA APLICAÇÃO (BOOTSTRAP)
 // ==========================================
 document.addEventListener("DOMContentLoaded", () => {
-    
+
     // Inicia Firebase se apiKey não for Dummy
     if (firebaseConfig.apiKey !== "SUA_API_KEY") {
         app = initializeApp(firebaseConfig);
         auth = getAuth(app);
         db = getFirestore(app);
+        if (firebaseConfig.measurementId) {
+            analytics = getAnalytics(app);
+        }
     }
-    
+
     const loginView = document.getElementById('login-view');
     const appView = document.getElementById('app-view');
 
@@ -203,7 +208,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (user) {
                 // Checagem constante - Se revogar no backend, kickamos na próxima sessão de reload local
                 const isPermitido = await checkAccessLevel(user.email);
-                
+
                 if (!isPermitido) {
                     await signOut(auth);
                 } else {
@@ -224,7 +229,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 appView.classList.add('hidden');
                 setActionLoading(false);
             }
-            
+
             toggleGlobalLoader(false);
         });
     } else {
