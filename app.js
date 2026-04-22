@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-app.js";
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, collection, addDoc, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, collection, addDoc, updateDoc, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-analytics.js";
 
 // ==========================================
@@ -118,6 +118,8 @@ function generateListView(title, desc, entityKey) {
         thead = `<tr><th>Fantasia</th><th>CNPJ</th><th>Telefone</th><th>Vendedor</th><th class="col-actions">Ações</th></tr>`;
     } else if (entityKey === 'produtos') {
         thead = `<tr><th style="width: 60px; text-align: center;"><span class="material-symbols-outlined text-[18px]">image</span></th><th>Produto</th><th>Fornecedor</th><th>Cor</th><th>Unidade</th><th class="col-actions">Ações</th></tr>`;
+    } else if (entityKey === 'transacoes') {
+        thead = `<tr><th>Data Op.</th><th>Tipo</th><th>Produto</th><th>Qtd.</th><th>Valor (R$)</th><th>Prev. Pagamento</th><th class="col-actions">Ações</th></tr>`;
     }
 
     return `
@@ -154,21 +156,84 @@ function generateListView(title, desc, entityKey) {
 
 const ViewTemplates = {
     dashb: () => `
-        <div class="page-header">
+        <div class="page-header" style="align-items: flex-end;">
             <div>
-                <h2 class="page-title">Dashboard Operacional</h2>
-                <p class="page-desc">Visão panorâmica do seu ecossistema</p>
+                <h2 class="page-title">Painel Executivo Financeiro</h2>
+                <p class="page-desc">Caixa Analítico e Receituário Comercial Logístico.</p>
+            </div>
+            <div>
+                <label style="font-size: 0.75rem; font-weight:600; color:var(--c-text-muted);">Competência (Mês/Ano)</label><br>
+                <input type="month" id="filtro-data-base" class="input-field" style="width: 200px; padding: 8px 12px; cursor: pointer;">
             </div>
         </div>
-        <div class="glass-panel" style="padding: 64px 32px; text-align: center; color: var(--c-text-muted); border-radius: var(--radius-md);">
-            <span class="material-symbols-outlined" style="font-size: 64px; color: var(--c-brand-soft); margin-bottom: 24px;">insights</span>
-            <h3 style="font-size: 1.5rem; color: var(--c-dark); margin-bottom: 8px;">Bem-vindo ao Painel Executivo</h3>
-            <p>Os módulos de banco de dados e roteamento nativos estão 100% operantes.</p>
+        <div class="dashboard-grid grid-4">
+            <div class="kpi-card">
+                <span class="kpi-title">Total Geral A Receber</span>
+                <span class="kpi-value info" id="dash-a-receber">R$ 0,00</span>
+            </div>
+            <div class="kpi-card">
+                <span class="kpi-title">Total Geral Já Recebido</span>
+                <span class="kpi-value positive" id="dash-recebido">R$ 0,00</span>
+            </div>
+            <div class="kpi-card">
+                <span class="kpi-title">Insumos (Total a Pagar)</span>
+                <span class="kpi-value" style="color:#d97706" id="dash-a-pagar">R$ 0,00</span>
+            </div>
+            <div class="kpi-card">
+                <span class="kpi-title">Investimento Logístico (Pago)</span>
+                <span class="kpi-value negative" id="dash-pago">R$ 0,00</span>
+            </div>
+        </div>
+        <div class="dashboard-grid grid-2" style="margin-bottom: 24px;">
+            <div class="kpi-card" style="background: var(--c-brand-soft); border-color: var(--c-brand);">
+                <span class="kpi-title" style="color: var(--c-brand-hover)">Total Geral Movimentado no Período</span>
+                <span class="kpi-value" style="color: var(--c-brand-hover)" id="dash-total-geral">R$ 0,00</span>
+            </div>
+            <div class="kpi-card" style="background: #ecfdf5; border-color: var(--c-success);">
+                <span class="kpi-title" style="color: #047857">Lucro Bruto Consolidado no Período</span>
+                <span class="kpi-value" style="color: #047857" id="dash-lucro">R$ 0,00</span>
+            </div>
+        </div>
+        <div class="bi-table-container grid-3">
+            <div class="table-card">
+                <div class="table-header-bar">
+                    <span class="table-header-title">Fluxo de Caixa</span>
+                </div>
+                <div style="padding: 16px; overflow-y: auto; max-height: 400px;">
+                    <table class="data-table">
+                        <thead><tr><th>Q.</th><th>Status</th><th>Valor (R$)</th></tr></thead>
+                        <tbody id="dash-fluxo"><td colspan="3" class="table-empty">Sincronizando BI...</td></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="table-card">
+                <div class="table-header-bar">
+                    <span class="table-header-title">Rentabilidade por Produto</span>
+                </div>
+                <div style="padding: 16px; overflow-y: auto; max-height: 400px;">
+                    <table class="data-table">
+                        <thead><tr><th>Produto</th><th>Invest.</th><th>Lucro</th></tr></thead>
+                        <tbody id="dash-rentabilidade"><td colspan="3" class="table-empty">Calculando base...</td></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="table-card">
+                <div class="table-header-bar">
+                    <span class="table-header-title">Controle Logístico</span>
+                </div>
+                <div style="padding: 16px; overflow-y: auto; max-height: 400px;">
+                    <table class="data-table">
+                        <thead><tr><th>Produto/Material</th><th>Saldo Atual</th></tr></thead>
+                        <tbody id="dash-estoque"><td colspan="2" class="table-empty">Sincronizando Inventário...</td></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     `,
     clientes: () => generateListView('Clientes', 'Gerencie sua carteira, contatos B2B e endereços.', 'clientes'),
     fornecedores: () => generateListView('Fornecedores', 'Gerencie as fábricas e seus representantes parceiros.', 'fornecedores'),
-    produtos: () => generateListView('Produtos em Estoque', 'Cadastro de referências, SKUs unitários e cores.', 'produtos')
+    produtos: () => generateListView('Produtos em Estoque', 'Cadastro de referências, SKUs unitários e cores.', 'produtos'),
+    transacoes: () => generateListView('Módulo de Transações', 'Registros corporativos de Compra (Investimento/Entrada) e Venda (Faturamento/Saída).', 'transacoes')
 };
 
 const SPA = {
@@ -263,6 +328,8 @@ document.addEventListener("DOMContentLoaded", () => {
 window.DB_Core = {
     unsubscribeCurrent: null,
     activeEntity: null,
+    editId: null,
+    dashboardDataCache: [],
 
     initModule(routeId) {
         if (this.unsubscribeCurrent) {
@@ -290,9 +357,12 @@ window.DB_Core = {
         cancelBtn.onclick = () => this.toggleDrawer(false);
 
         // Dispara leituras se for rota de tabela (Entity Keys batem com collections Firestore)
-        if (['clientes', 'fornecedores', 'produtos'].includes(routeId)) {
+        if (['clientes', 'fornecedores', 'produtos', 'transacoes'].includes(routeId)) {
             this.activeEntity = routeId;
             this.startReadStream(routeId);
+        } else if (routeId === 'dashb') {
+            this.activeEntity = null;
+            this.startDashboardStream();
         } else {
             this.activeEntity = null;
         }
@@ -307,6 +377,14 @@ window.DB_Core = {
     applyMasks() {
         const maskCNPJ = (v) => v.replace(/\D/g, '').replace(/^(\d{2})(\d)/, "$1.$2").replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3").replace(/\.(\d{3})(\d)/, ".$1/$2").replace(/(\d{4})(\d)/, "$1-$2").slice(0, 18);
         const maskTel = (v) => v.replace(/\D/g, '').replace(/^(\d{2})(\d)/, "($1) $2").replace(/(\d{4,5})(\d)/, "$1-$2").slice(0, 15);
+        const maskMoeda = (v) => {
+            v = v.replace(/\D/g, "");
+            v = (v/100).toFixed(2) + "";
+            v = v.replace(".", ",");
+            v = v.replace(/(\d)(\d{3})(\d{3}),/g, "$1.$2.$3,");
+            v = v.replace(/(\d)(\d{3}),/g, "$1.$2,");
+            return "R$ " + (v === "0,00" && v.length < 5 ? "" : v);
+        };
 
         document.querySelectorAll('input[id$="cnpj"]').forEach(el => {
             el.addEventListener('input', (e) => e.target.value = maskCNPJ(e.target.value));
@@ -314,15 +392,20 @@ window.DB_Core = {
         document.querySelectorAll('input[id$="telefone"]').forEach(el => {
             el.addEventListener('input', (e) => e.target.value = maskTel(e.target.value));
         });
+        document.querySelectorAll('input[id$="valor"]').forEach(el => {
+            el.addEventListener('input', (e) => e.target.value = maskMoeda(e.target.value));
+        });
     },
 
-    openDrawer(entityKey) {
+    openDrawer(entityKey, dataToEdit = null, docId = null) {
+        this.editId = docId || null;
         const titleEl = document.getElementById('drawer-title');
         const formEl = document.getElementById('drawer-dynamic-form');
         let formHTML = '';
+        const opName = docId ? "Editando" : "Novo";
 
         if (entityKey === 'clientes') {
-            titleEl.innerText = "Novo Cliente B2B";
+            titleEl.innerText = `${opName} Cliente B2B`;
             formHTML = `
                 <div class="form-section-title">Dados de Registro</div>
                 <div class="form-group">
@@ -364,7 +447,7 @@ window.DB_Core = {
                 </div>
             `;
         } else if (entityKey === 'fornecedores') {
-            titleEl.innerText = "Homologar Fornecedor";
+            titleEl.innerText = `${opName} Fornecedor`;
             formHTML = `
                 <div class="form-section-title">Dados Matriz</div>
                 <div class="form-group">
@@ -412,7 +495,7 @@ window.DB_Core = {
                 </div>
             `;
         } else if (entityKey === 'produtos') {
-            titleEl.innerText = "Registrar Produto (SKU)";
+            titleEl.innerText = `${opName} Produto (SKU)`;
             formHTML = `
                 <div class="form-section-title">Definições Logísticas</div>
                 <div class="form-group">
@@ -437,14 +520,101 @@ window.DB_Core = {
                 </div>
             `;
             this.populateFornecedoresSelect();
+        } else if(entityKey === 'transacoes') {
+            titleEl.innerText = docId ? "Editando Transação" : "Registrar Nova Operação";
+            formHTML = `
+                <div class="form-section-title">Natureza da Transação</div>
+                <div class="radio-group-modern">
+                    <label class="radio-option">
+                        <input type="radio" name="tipoOp" value="compra" required checked>
+                        <div class="radio-card compra">
+                            <span class="material-symbols-outlined">south_west</span>
+                            Entrada (Compra)
+                        </div>
+                    </label>
+                    <label class="radio-option">
+                        <input type="radio" name="tipoOp" value="venda" required>
+                        <div class="radio-card venda">
+                            <span class="material-symbols-outlined">north_east</span>
+                            Saída (Venda)
+                        </div>
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>Produto Envolvido</label>
+                    <select id="ipt-produto" required class="input-field">
+                        <option value="" disabled selected>Buscando inventário em nuvem...</option>
+                    </select>
+                    <div id="forn-hint-visual" style="margin-top: 8px; font-size: 0.8rem; font-weight: 600; color: var(--c-brand);"></div>
+                </div>
+                <div class="form-row">
+                    <div>
+                        <label>Quantidade (em Metros)</label>
+                        <input type="number" id="ipt-qtd" required class="input-field" placeholder="0" min="1" step="0.01">
+                    </div>
+                    <div>
+                        <label>Valor Total (R$)</label>
+                        <input type="text" id="ipt-valor" required class="input-field" placeholder="R$ 0,00">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div>
+                        <label>Data da Operação</label>
+                        <input type="date" id="ipt-data-op" required class="input-field">
+                    </div>
+                    <div>
+                        <label>Previs. Pagamento/Recebimento</label>
+                        <input type="date" id="ipt-data-pag" required class="input-field">
+                    </div>
+                </div>
+            `;
+            setTimeout(() => {
+                const tzoffset = (new Date()).getTimezoneOffset() * 60000;
+                const localISOTime = (new Date(Date.now() - tzoffset)).toISOString().slice(0, 10);
+                document.getElementById('ipt-data-op').value = localISOTime;
+            }, 50);
+            this.populateProdutosSelect();
         }
 
         formEl.innerHTML = formHTML;
         this.applyMasks();
+        
+        if (entityKey === 'transacoes' || entityKey === 'produtos') {
+            const preSelect = dataToEdit ? (dataToEdit.fornecedorId || dataToEdit.produtoId) : null;
+            if (entityKey === 'produtos') this.populateFornecedoresSelect(preSelect);
+            else this.populateProdutosSelect(preSelect);
+        }
+
+        if (dataToEdit) {
+            setTimeout(() => {
+                for(let key in dataToEdit) {
+                    let ipt = document.getElementById(`ipt-${key}`);
+                    if (ipt && key!=='timestamp' && ipt.type!=='radio') {
+                        ipt.value = dataToEdit[key];
+                        // Trigger input to fix formatting
+                        ipt.dispatchEvent(new Event('input'));
+                    }
+                }
+                
+                // Specific Transaction Edition
+                if (entityKey === 'transacoes') {
+                    if (dataToEdit.tipo) {
+                        const rdo = document.querySelector(`input[name="tipoOp"][value="${dataToEdit.tipo}"]`);
+                        if(rdo) rdo.checked = true;
+                    }
+                    if (dataToEdit.valorTotal) {
+                        const valIpt = document.getElementById('ipt-valor');
+                        valIpt.value = (dataToEdit.valorTotal * 100).toString(); // raw mock for strict BRL function
+                        valIpt.dispatchEvent(new Event('input'));
+                    }
+                }
+            }, 100);
+        }
+
         this.toggleDrawer(true);
     },
 
-    async populateFornecedoresSelect() {
+    async populateFornecedoresSelect(preSelect = null) {
         if (!db) return;
         try {
             // Usa getDocs genérico assíncrono para dropdowns
@@ -458,6 +628,7 @@ window.DB_Core = {
                     const opt = document.createElement('option');
                     opt.value = doc.id;
                     opt.text = data.fantasia || data.razao || doc.id;
+                    if(preSelect === doc.id) opt.selected = true;
                     select.appendChild(opt);
                 });
             }
@@ -510,12 +681,35 @@ window.DB_Core = {
                     unidade_medida: document.getElementById('ipt-unidade').value,
                     timestamp: new Date()
                 };
+            } else if (this.activeEntity === 'transacoes') {
+                const selProd = document.getElementById('ipt-produto');
+                const optSelect = selProd.options[selProd.selectedIndex];
+                const fornecedorOp = optSelect.dataset.forn || '-';
+                const vlrStr = document.getElementById('ipt-valor').value.replace("R$ ","").replace(/\./g, "").replace(",", ".");
+                
+                payload = {
+                    tipo: document.querySelector('input[name="tipoOp"]:checked').value,
+                    produtoId: selProd.value,
+                    produtoNome: optSelect.text,
+                    fornecedorNome: fornecedorOp,
+                    qtd: parseFloat(document.getElementById('ipt-qtd').value),
+                    valorTotal: parseFloat(vlrStr),
+                    dataOp: document.getElementById('ipt-data-op').value,
+                    dataPag: document.getElementById('ipt-data-pag').value,
+                    timestamp: new Date()
+                };
             }
 
-            // Realiza push no Firestore (A listagem puxa via onSnapshot automaticamente)
-            await addDoc(collection(db, this.activeEntity), payload);
-
-            showToast("Registro criado nativamente e salvo em nuvem com sucesso!", "success");
+            // Push or Update Firestore
+            if (this.editId) {
+                await updateDoc(doc(db, this.activeEntity, this.editId), payload);
+                showToast("Registro ATUALIZADO em nuvem com sucesso!", "success");
+            } else {
+                await addDoc(collection(db, this.activeEntity), payload);
+                showToast("Registro criado nativamente e salvo em nuvem com sucesso!", "success");
+            }
+            
+            this.editId = null;
             this.toggleDrawer(false);
 
         } catch (e) {
@@ -567,12 +761,30 @@ window.DB_Core = {
                         <td>${data.cor || '-'}</td>
                         <td><span class="badge badge-neutral">${data.unidade_medida || 'metros'}</span></td>
                     `;
+                } else if (collectionName === 'transacoes') {
+                    const isCompra = data.tipo === 'compra';
+                    const iconColor = isCompra ? 'color: var(--c-success);' : 'color: var(--c-brand);';
+                    const icon = isCompra ? 'south_west' : 'north_east';
+                    const trLabel = isCompra ? 'COMPRA' : 'VENDA';
+                    const valFormat = (data.valorTotal || 0).toLocaleString('pt-BR', {style: 'currency', currency:'BRL'});
+                    
+                    tr.innerHTML = `
+                        <td style="font-weight: 500;">${data.dataOp.split('-').reverse().join('/')}</td>
+                        <td><span class="badge ${isCompra ? 'badge-success' : 'badge-info'}" style="display:inline-flex; gap:4px; align-items:center;"><span class="material-symbols-outlined" style="font-size:12px;">${icon}</span> ${trLabel}</span></td>
+                        <td style="font-weight: 600;">${data.produtoNome}</td>
+                        <td>${data.qtd}</td>
+                        <td style="font-family: monospace; font-weight:600;">${valFormat}</td>
+                        <td style="color: var(--c-text-muted); font-size:0.85rem;">${data.dataPag.split('-').reverse().join('/')}</td>
+                    `;
                 }
 
                 // Injeção da Coluna de Deletar Centralizada
                 const tdAction = document.createElement('td');
                 tdAction.className = "col-actions";
                 tdAction.innerHTML = `
+                    <button class="btn-icon js-edit" data-id="${docSnap.id}">
+                        <span class="material-symbols-outlined">edit</span>
+                    </button>
                     <button class="btn-icon danger js-del" data-id="${docSnap.id}">
                         <span class="material-symbols-outlined">delete_outline</span>
                     </button>
@@ -580,7 +792,11 @@ window.DB_Core = {
 
                 tr.appendChild(tdAction);
 
-                // Binding do Câmbio DeleteDoc
+                // Binding Edit e DeleteDoc
+                tdAction.querySelector('.js-edit').addEventListener('click', () => {
+                    this.openDrawer(collectionName, data, docSnap.id);
+                });
+                
                 tdAction.querySelector('.js-del').addEventListener('click', async () => {
                     if (confirm("Confirma a exclusão deste item corporativo? Esta ação é irreversível e ocorrerá em nuvem na hora.")) {
                         try {
@@ -600,5 +816,180 @@ window.DB_Core = {
         }, (error) => {
             showToast("Falha de Escuta Snapshot DB: " + error.message, "error");
         });
+    },
+
+    async populateProdutosSelect(preSelect = null) {
+        if(!db) return;
+        try {
+            const { getDocs } = await import("https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js");
+            const snap = await getDocs(collection(db, 'produtos'));
+            const select = document.getElementById('ipt-produto');
+            if(select) {
+                select.innerHTML = '<option value="" disabled selected>Selecione um Sku na base</option>';
+                snap.forEach(doc => {
+                    const data = doc.data();
+                    const opt = document.createElement('option');
+                    opt.value = doc.id;
+                    opt.text = data.nome || doc.id;
+                    opt.dataset.forn = data.fornecedorNome || '-';
+                    if(preSelect === doc.id) opt.selected = true;
+                    select.appendChild(opt);
+                });
+                
+                // Visual Hint
+                select.onchange = (e) => {
+                    const h = document.getElementById('forn-hint-visual');
+                    const o = e.target.options[e.target.selectedIndex];
+                    if(h && o) h.innerText = "Fornecedor da Operação: " + (o.dataset.forn || '-');
+                };
+                if(preSelect) select.dispatchEvent(new Event('change'));
+            }
+        } catch(e) {
+            console.error(e);
+        }
+    },
+
+    startDashboardStream() {
+        if(!db) return;
+        
+        // Auto-select current mês 
+        const d = new Date();
+        const m = (d.getMonth() + 1).toString().padStart(2, '0');
+        const filtro = document.getElementById('filtro-data-base');
+        if(filtro && !filtro.value) filtro.value = `${d.getFullYear()}-${m}`;
+        
+        if (filtro) {
+            filtro.addEventListener('change', () => this.renderBI());
+        }
+
+        this.unsubscribeCurrent = onSnapshot(collection(db, 'transacoes'), (snapshot) => {
+            this.dashboardDataCache = [];
+            snapshot.forEach(docSnap => {
+                this.dashboardDataCache.push({ id: docSnap.id, ...docSnap.data() });
+            });
+            this.renderBI();
+        }, (error) => { console.error("BI erro:", error); });
+    },
+
+    renderBI() {
+        const tbodyEstoque = document.getElementById('dash-estoque');
+        const tbodyFluxo = document.getElementById('dash-fluxo');
+        const tbodyRent = document.getElementById('dash-rentabilidade');
+        const filtroM = document.getElementById('filtro-data-base')?.value; 
+        
+        const tzoffset = (new Date()).getTimezoneOffset() * 60000;
+        const hojeISO = (new Date(Date.now() - tzoffset)).toISOString().slice(0, 10);
+        
+        let aPagar = 0, pago = 0, aReceber = 0, recebido = 0;
+        const estoqueMap = {};
+        const rentMap = {};
+        let fluxoList = [];
+        let totalMovimentado = 0;
+
+        this.dashboardDataCache.forEach(d => {
+            // Estoque Histórico
+            if(!estoqueMap[d.produtoId]) estoqueMap[d.produtoId] = { nome: d.produtoNome, saldo: 0 };
+            if(d.tipo === 'compra') estoqueMap[d.produtoId].saldo += d.qtd;
+            else estoqueMap[d.produtoId].saldo -= d.qtd;
+            
+            // Rentabilidade (Histórico Base)
+            if(!rentMap[d.produtoId]) rentMap[d.produtoId] = { nome: d.produtoNome, inv: 0, luc: 0 };
+            if(d.tipo === 'compra') rentMap[d.produtoId].inv += d.valorTotal;
+            else rentMap[d.produtoId].luc += d.valorTotal;
+
+            // Filtros Temporais para os Quadros Principais
+            const dPeriodo = d.dataPag.substring(0, 7);
+            if(filtroM && dPeriodo !== filtroM) return;
+
+            const isPago = d.dataPag <= hojeISO;
+            totalMovimentado += d.valorTotal;
+
+            if(d.tipo === 'compra') {
+                if(isPago) pago += d.valorTotal; else aPagar += d.valorTotal;
+            } else {
+                if(isPago) recebido += d.valorTotal; else aReceber += d.valorTotal;
+            }
+            fluxoList.push({...d, isQuitado: isPago});
+        });
+
+        const cBRL = (val) => val.toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+        const el = (id) => document.getElementById(id);
+        
+        if(el('dash-a-receber')) el('dash-a-receber').innerText = cBRL(aReceber);
+        if(el('dash-recebido')) el('dash-recebido').innerText = cBRL(recebido);
+        if(el('dash-a-pagar')) el('dash-a-pagar').innerText = cBRL(aPagar);
+        if(el('dash-pago')) el('dash-pago').innerText = cBRL(pago);
+        if(el('dash-total-geral')) el('dash-total-geral').innerText = cBRL(totalMovimentado);
+        if(el('dash-lucro')) el('dash-lucro').innerText = cBRL((recebido + aReceber) - (pago + aPagar));
+
+        fluxoList.sort((a,b) => new Date(a.dataPag) - new Date(b.dataPag));
+        if(tbodyFluxo) {
+            tbodyFluxo.innerHTML = '';
+            if(fluxoList.length === 0) tbodyFluxo.innerHTML = '<tr><td colspan="3" class="table-empty">Sem fluxo financeiro.</td></tr>';
+            fluxoList.slice(0, 50).forEach(cx => {
+                const isC = cx.tipo === 'compra';
+                let stBadge = '';
+                if(isC) stBadge = cx.isQuitado ? '<span class="badge badge-success">PAGO</span>' : '<span class="badge badge-neutral">A PAGAR</span>';
+                else stBadge = cx.isQuitado ? '<span class="badge badge-success" style="background:#0284c7;color:white;">RECEBIDO</span>' : '<span class="badge badge-info">A RECEBER</span>';
+
+                const tr = document.createElement('tr');
+                tr.className = "clickable-row";
+                tr.innerHTML = `
+                    <td style="font-size:0.85rem">${cx.dataPag.split('-').reverse().join('/')}</td>
+                    <td>${stBadge}</td>
+                    <td style="font-family:monospace; font-weight:600; ${isC ? 'color:var(--c-danger)':'color:var(--c-success)'};">${isC ? '-' : '+'}${cBRL(cx.valorTotal)}</td>
+                `;
+                
+                tr.addEventListener('click', () => {
+                    const md = document.getElementById('generic-modal');
+                    const mb = document.getElementById('modal-body');
+                    if(md && mb) {
+                        mb.innerHTML = `
+                            <div class="modal-kv"><span class="modal-kv-key">Status Financeiro</span><span class="modal-kv-val">${stBadge}</span></div>
+                            <div class="modal-kv"><span class="modal-kv-key">Produto/Serviço</span><span class="modal-kv-val">${cx.produtoNome}</span></div>
+                            <div class="modal-kv"><span class="modal-kv-key">Fornecedor Logístico</span><span class="modal-kv-val">${cx.fornecedorNome || '-'}</span></div>
+                            <div class="modal-kv"><span class="modal-kv-key">Volume Tangível</span><span class="modal-kv-val">${cx.qtd} Metros</span></div>
+                            <div class="modal-kv"><span class="modal-kv-key">Natureza/Transação</span><span class="modal-kv-val">${isC ? 'Compra (Custo)' : 'Venda (Faturamento)'}</span></div>
+                            <div class="modal-kv"><span class="modal-kv-key">Valor Agregado (BR)</span><span class="modal-kv-val">${cBRL(cx.valorTotal)}</span></div>
+                            <div class="modal-kv"><span class="modal-kv-key">Data Base Mestre</span><span class="modal-kv-val">${cx.dataOp.split('-').reverse().join('/')}</span></div>
+                            <div class="modal-kv"><span class="modal-kv-key">Vencimento</span><span class="modal-kv-val">${cx.dataPag.split('-').reverse().join('/')}</span></div>
+                        `;
+                        md.classList.add('open');
+                    }
+                });
+                tbodyFluxo.appendChild(tr);
+            });
+        }
+        
+        if(tbodyRent) {
+            tbodyRent.innerHTML = '';
+            const rents = Object.values(rentMap);
+            if(rents.length === 0) tbodyRent.innerHTML = '<tr><td colspan="3" class="table-empty">Sem faturamento aparente.</td></tr>';
+            rents.forEach(r => {
+                const perc = r.inv > 0 ? ((r.luc - r.inv) / r.inv * 100).toFixed(0) : 100;
+                tbodyRent.innerHTML += `
+                    <tr>
+                        <td style="font-weight:600; font-size:0.85rem;">${r.nome}</td>
+                        <td style="font-family:monospace; color:var(--c-text-muted);">${cBRL(r.inv)}</td>
+                        <td style="font-family:monospace; font-weight:700; ${r.luc >= r.inv ? 'color:var(--c-success)' : 'color:var(--c-danger)'};">${cBRL(r.luc - r.inv)} <span style="font-size:0.75rem;">(${perc}%)</span></td>
+                    </tr>
+                `;
+            });
+        }
+
+        if(tbodyEstoque) {
+            tbodyEstoque.innerHTML = '';
+            const skus = Object.values(estoqueMap);
+            if(skus.length === 0) tbodyEstoque.innerHTML = '<tr><td colspan="2" class="table-empty">Logística Ociosa.</td></tr>';
+            skus.forEach(sk => {
+                const st = sk.saldo < 0 ? 'color:var(--c-danger)' : (sk.saldo > 0 ? 'color:var(--c-success)' : '');
+                tbodyEstoque.innerHTML += `
+                    <tr>
+                        <td style="font-weight:600; font-size:0.85rem">${sk.nome}</td>
+                        <td style="font-family:monospace; font-weight:700; ${st}">${sk.saldo} Metros</td>
+                    </tr>
+                `;
+            });
+        }
     }
 };
