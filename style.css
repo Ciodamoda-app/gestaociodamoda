@@ -352,6 +352,11 @@ input, select, textarea {
   background: rgba(239, 68, 68, 0.1);
 }
 
+.btn-icon.print:hover {
+  color: #0369a1;
+  background: rgba(3, 105, 161, 0.1);
+}
+
 /* FORMS */
 .form-group {
   margin-bottom: 20px;

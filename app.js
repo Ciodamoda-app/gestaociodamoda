@@ -124,7 +124,7 @@ function generateListView(title, desc, entityKey) {
     } else if (entityKey === 'produtos') {
         thead = `<tr><th style="width: 60px; text-align: center;"><span class="material-symbols-outlined text-[18px]">image</span></th><th>Produto</th><th>Fornecedor</th><th>Cor</th><th>Unidade</th><th class="col-actions">Ações</th></tr>`;
     } else if (entityKey === 'transacoes') {
-        thead = `<tr><th>Cód.</th><th>Data Op.</th><th>Tipo Operação</th><th>Frente de Caixa (Itens)</th><th>Valor (R$)</th><th>Prev. Pagamento</th><th class="col-actions">Ações</th></tr>`;
+        thead = `<tr><th>Cód.</th><th>Data Op.</th><th>Tipo Operação</th><th>Cliente</th><th>Frente de Caixa (Itens)</th><th>Valor (R$)</th><th>Prev. Pagamento</th><th class="col-actions">Ações</th></tr>`;
     } else if (entityKey === 'usuarios_permitidos') {
         thead = `<tr><th>Credencial Associada (E-mail Base)</th><th>Privilégio / Role</th><th>Situação</th><th class="col-actions">Ações</th></tr>`;
     }
@@ -570,22 +570,28 @@ window.DB_Core = {
                         </div>
                     </label>
                 </div>
+
+                <div class="form-group" style="margin-top: 16px;">
+                    <label>Cliente</label>
+                    <input type="text" id="ipt-cliente" list="dl-clientes" class="input-field" placeholder="Digite para buscar cliente..." autocomplete="off">
+                    <datalist id="dl-clientes"></datalist>
+                    <span id="cliente-hint-visual" style="font-size: 0.7rem; color: var(--c-text-muted); margin-top: 4px; display:block;"></span>
+                </div>
                 
                 <div class="form-section-title" style="margin-top:16px;">Carrinho de Itens (Lote)</div>
                 <div class="cart-builder">
                     <div style="display: flex; align-items: flex-end; gap: 8px; width: 100%;">
                         <div style="flex:2;">
                             <label style="font-size: 0.7rem; color: var(--c-text-muted);">Selecione o produto</label>
-                            <select id="ipt-produto" class="input-field" style="padding: 8px;">
-                                <option value="" disabled selected>Buscando...</option>
-                            </select>
+                            <input type="text" id="ipt-produto" list="dl-produtos" class="input-field" placeholder="Digite para buscar produto..." autocomplete="off" style="padding: 8px;">
+                            <datalist id="dl-produtos"></datalist>
                         </div>
                         <div style="flex:1;">
                             <label style="font-size: 0.7rem; color: var(--c-text-muted);">Qtd (M)</label>
                             <input type="number" id="ipt-qtd" class="input-field" placeholder="0" min="0.01" step="0.01" style="padding: 8px;">
                         </div>
                         <div style="flex:1;">
-                            <label style="font-size: 0.7rem; color: var(--c-text-muted);">UNidade (R$)</label>
+                            <label style="font-size: 0.7rem; color: var(--c-text-muted);">Valor UN (R$)</label>
                             <input type="text" id="ipt-valor-un" class="input-field monetario-mask" placeholder="0,00" style="padding: 8px;">
                         </div>
                         <div>
@@ -627,30 +633,48 @@ window.DB_Core = {
                 const rds = document.querySelectorAll('input[name="tipoOp"]');
                 const updateLbl = () => {
                     const lc = document.getElementById('lbl-data-pag');
+                    const clienteInput = document.getElementById('ipt-cliente');
+                    const tipoVal = document.querySelector('input[name="tipoOp"]:checked').value;
+                    const isC = tipoVal === 'compra';
                     if(lc) {
-                        const isC = document.querySelector('input[name="tipoOp"]:checked').value === 'compra';
                         lc.innerText = isC ? 'Previsão de Pagamento' : 'Previsão de Recebimento';
+                    }
+                    if(clienteInput) {
+                        clienteInput.disabled = isC;
+                        if(isC) {
+                            clienteInput.value = '';
+                            clienteInput.style.background = 'var(--c-light)';
+                            clienteInput.style.cursor = 'not-allowed';
+                        } else {
+                            clienteInput.style.background = '';
+                            clienteInput.style.cursor = '';
+                        }
                     }
                 };
                 rds.forEach(r => r.addEventListener('change', updateLbl));
                 updateLbl();
                 
-                // Add Item Listener
+                // Add Item Listener (Datalist-based extraction)
                 document.getElementById('btn-add-item').addEventListener('click', () => {
-                    const sel = document.getElementById('ipt-produto');
+                    const inp = document.getElementById('ipt-produto');
+                    const typedVal = inp.value.trim();
                     const qtd = parseFloat(document.getElementById('ipt-qtd').value);
                     const vStr = document.getElementById('ipt-valor-un').value.replace("R$ ","").replace(/\./g, "").replace(",", ".");
                     const vun = parseFloat(vStr);
                     
-                    if(!sel.value || isNaN(qtd) || isNaN(vun) || qtd<=0 || vun<=0) {
-                        return showToast("Preencha Produto, Quantidade e Valor unitário de R$ reais corretamente.", "warning");
+                    // Buscar a option correspondente no datalist
+                    const dlOpts = document.querySelectorAll('#dl-produtos option');
+                    let matchedOpt = null;
+                    dlOpts.forEach(o => { if(o.value === typedVal) matchedOpt = o; });
+                    
+                    if(!matchedOpt || isNaN(qtd) || isNaN(vun) || qtd<=0 || vun<=0) {
+                        return showToast("Preencha Produto (válido da lista), Quantidade e Valor UN corretamente.", "warning");
                     }
                     
-                    const opt = sel.options[sel.selectedIndex];
                     window.currentCart.push({
-                        produtoId: sel.value,
-                        produtoNome: opt.text,
-                        fornecedorNome: opt.dataset.forn || '-',
+                        produtoId: matchedOpt.dataset.id,
+                        produtoNome: matchedOpt.value,
+                        fornecedorNome: matchedOpt.dataset.forn || '-',
                         qtd: qtd,
                         vun: vun,
                         subTotal: qtd * vun
@@ -658,7 +682,7 @@ window.DB_Core = {
                     
                     document.getElementById('ipt-qtd').value = '';
                     document.getElementById('ipt-valor-un').value = '';
-                    sel.value = '';
+                    inp.value = '';
                     window.DB_Core.renderCartTable();
                 });
             }, 50);
@@ -697,7 +721,10 @@ window.DB_Core = {
         if (entityKey === 'transacoes' || entityKey === 'produtos') {
             const preSelect = dataToEdit ? (dataToEdit.fornecedorId || dataToEdit.produtoId) : null;
             if (entityKey === 'produtos') this.populateFornecedoresSelect(preSelect);
-            else this.populateProdutosSelect(preSelect);
+            else {
+                this.populateProdutosSelect(preSelect);
+                this.populateClientesDatalist(dataToEdit?.clienteId || null);
+            }
         }
 
         if (dataToEdit) {
@@ -715,7 +742,10 @@ window.DB_Core = {
                 if (entityKey === 'transacoes') {
                     if (dataToEdit.tipo) {
                         const rdo = document.querySelector(`input[name="tipoOp"][value="${dataToEdit.tipo}"]`);
-                        if(rdo) rdo.checked = true;
+                        if(rdo) {
+                            rdo.checked = true;
+                            rdo.dispatchEvent(new Event('change'));
+                        }
                     }
                     
                     // Fallback to old scalar mode gracefully OR popuplate new map array
@@ -845,6 +875,16 @@ window.DB_Core = {
                 }
 
                 const tipoOp = document.querySelector('input[name="tipoOp"]:checked').value;
+
+                // Validação: Cliente obrigatório para Venda e Orçamento
+                if (tipoOp === 'venda' || tipoOp === 'orcamento') {
+                    const clienteCheck = document.getElementById('ipt-cliente');
+                    if (!clienteCheck || !clienteCheck.value.trim()) {
+                        showToast("O campo Cliente é obrigatório para operações de Venda e Orçamento.", "error");
+                        return toggleGlobalLoader(false);
+                    }
+                }
+
                 const reqs = {};
                 window.currentCart.forEach(i => { reqs[i.produtoId] = (reqs[i.produtoId] || 0) + i.qtd; });
                 
@@ -880,10 +920,22 @@ window.DB_Core = {
                     }
                 }
                 
+                // Extrair Cliente do Datalist
+                const clienteInput = document.getElementById('ipt-cliente');
+                const clienteTyped = clienteInput ? clienteInput.value.trim() : '';
+                let clienteId = '', clienteNome = '';
+                if(clienteTyped) {
+                    const clOpts = document.querySelectorAll('#dl-clientes option');
+                    clOpts.forEach(o => { if(o.value === clienteTyped) { clienteId = o.dataset.id; clienteNome = o.value; } });
+                    if(!clienteId) clienteNome = clienteTyped; // permite nome livre se não casar com datalist
+                }
+
                 payload = {
                     tipo: tipoOp,
                     itens: window.currentCart,
                     valorTotal: window.currentCart.reduce((a,b)=>a+b.subTotal, 0),
+                    clienteId: clienteId,
+                    clienteNome: clienteNome,
                     dataOp: document.getElementById('ipt-data-op').value,
                     dataPag: document.getElementById('ipt-data-pag').value,
                     timestamp: new Date()
@@ -1004,6 +1056,7 @@ window.DB_Core = {
                         <td style="font-weight: 700; color:var(--c-text-muted);">${cd}</td>
                         <td style="font-weight: 500;">${data.dataOp.split('-').reverse().join('/')}</td>
                         <td><span class="badge ${badgeClass}" style="display:inline-flex; gap:4px; align-items:center;"><span class="material-symbols-outlined" style="font-size:12px;">${icon}</span> ${trLabel}</span></td>
+                        <td style="font-size: 0.85rem; font-weight: 500;">${data.clienteNome || '-'}</td>
                         <td style="font-size: 0.75rem; line-height: 1.2;">${f_str}</td>
                         <td style="font-family: monospace; font-weight:600;">${valFormat}</td>
                         <td style="color: var(--c-text-muted); font-size:0.85rem;">${data.dataPag.split('-').reverse().join('/')}</td>
@@ -1018,10 +1071,16 @@ window.DB_Core = {
                     `;
                 }
 
-                // Injeção da Coluna de Deletar Centralizada
+                // Injeção da Coluna de Ações
                 const tdAction = document.createElement('td');
                 tdAction.className = "col-actions";
+                const printBtnHTML = (collectionName === 'transacoes' && (data.tipo === 'venda' || data.tipo === 'orcamento'))
+                    ? `<button class="btn-icon print js-print" data-id="${docSnap.id}" title="Imprimir PDF">
+                            <span class="material-symbols-outlined">print</span>
+                       </button>`
+                    : '';
                 tdAction.innerHTML = `
+                    ${printBtnHTML}
                     <button class="btn-icon js-edit" data-id="${docSnap.id}">
                         <span class="material-symbols-outlined">edit</span>
                     </button>
@@ -1032,7 +1091,14 @@ window.DB_Core = {
 
                 tr.appendChild(tdAction);
 
-                // Binding Edit e DeleteDoc
+                // Binding Print, Edit e DeleteDoc
+                const printBtnEl = tdAction.querySelector('.js-print');
+                if (printBtnEl) {
+                    printBtnEl.addEventListener('click', () => {
+                        this.generateTransactionPDF(data);
+                    });
+                }
+
                 tdAction.querySelector('.js-edit').addEventListener('click', () => {
                     this.openDrawer(collectionName, data, docSnap.id);
                 });
@@ -1067,26 +1133,49 @@ window.DB_Core = {
         try {
             const { getDocs } = await import("https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js");
             const snap = await getDocs(collection(db, 'produtos'));
-            const select = document.getElementById('ipt-produto');
-            if(select) {
-                select.innerHTML = '<option value="" disabled selected>Selecione o produto</option>';
+            const dl = document.getElementById('dl-produtos');
+            const inp = document.getElementById('ipt-produto');
+            if(dl) {
+                dl.innerHTML = '';
                 snap.forEach(doc => {
                     const data = doc.data();
                     const opt = document.createElement('option');
-                    opt.value = doc.id;
-                    opt.text = data.nome || doc.id;
+                    opt.value = data.nome || doc.id;
+                    opt.dataset.id = doc.id;
                     opt.dataset.forn = data.fornecedorNome || '-';
-                    if(preSelect === doc.id) opt.selected = true;
-                    select.appendChild(opt);
+                    dl.appendChild(opt);
                 });
-                
-                // Visual Hint
-                select.onchange = (e) => {
-                    const h = document.getElementById('forn-hint-visual');
-                    const o = e.target.options[e.target.selectedIndex];
-                    if(h && o) h.innerText = "Fornecedor da Operação: " + (o.dataset.forn || '-');
-                };
-                if(preSelect) select.dispatchEvent(new Event('change'));
+            }
+            if(inp && preSelect) {
+                // Preencher o input com o nome do produto pré-selecionado
+                const matchOpt = dl?.querySelector(`option[data-id="${preSelect}"]`);
+                if(matchOpt) inp.value = matchOpt.value;
+            }
+        } catch(e) {
+            console.error(e);
+        }
+    },
+
+    async populateClientesDatalist(preSelectId = null) {
+        if(!db) return;
+        try {
+            const { getDocs } = await import("https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js");
+            const snap = await getDocs(collection(db, 'clientes'));
+            const dl = document.getElementById('dl-clientes');
+            const inp = document.getElementById('ipt-cliente');
+            if(dl) {
+                dl.innerHTML = '';
+                snap.forEach(doc => {
+                    const data = doc.data();
+                    const opt = document.createElement('option');
+                    opt.value = data.fantasia || data.razao || doc.id;
+                    opt.dataset.id = doc.id;
+                    dl.appendChild(opt);
+                });
+            }
+            if(inp && preSelectId) {
+                const matchOpt = dl?.querySelector(`option[data-id="${preSelectId}"]`);
+                if(matchOpt) inp.value = matchOpt.value;
             }
         } catch(e) {
             console.error(e);
@@ -1169,7 +1258,7 @@ window.DB_Core = {
             } else {
                 if(isPago) recebido += d.valorTotal; else aReceber += d.valorTotal;
             }
-            fluxoList.push({...d, isQuitado: isPago, itLength: mItens.length, pName: mItens[0]?.produtoNome});
+            fluxoList.push({...d, isQuitado: isPago, itLength: mItens.length, pName: mItens[0]?.produtoNome, clienteNome: d.clienteNome || ''});
         });
 
         const cBRL = (val) => val.toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
@@ -1207,9 +1296,9 @@ window.DB_Core = {
                     if(md && mb) {
                         mb.innerHTML = `
                             <div class="modal-kv"><span class="modal-kv-key">Status Financeiro</span><span class="modal-kv-val">${stBadge}</span></div>
+                            <div class="modal-kv"><span class="modal-kv-key">Cliente</span><span class="modal-kv-val">${cx.clienteNome || 'Não informado'}</span></div>
                             <div class="modal-kv"><span class="modal-kv-key">Recorte do Lote Interno</span><span class="modal-kv-val">${cx.pName} ${cx.itLength>1 ? `(+${cx.itLength-1} outros)`:''}</span></div>
-                            <div class="modal-kv"><span class="modal-kv-key">Natureza / Transação</span><span class="modal-kv-val">${isC ? 'Compra' : 'Venda'} Corporativa</span></div>
-                            <div class="modal-kv"><span class="modal-kv-key">Natureza/Transação</span><span class="modal-kv-val">${isC ? 'Compra (Custo)' : 'Venda (Faturamento)'}</span></div>
+                            <div class="modal-kv"><span class="modal-kv-key">Natureza / Transação</span><span class="modal-kv-val">${isC ? 'Compra (Custo)' : 'Venda (Faturamento)'}</span></div>
                             <div class="modal-kv"><span class="modal-kv-key">Valor Agregado (BR)</span><span class="modal-kv-val">${cBRL(cx.valorTotal)}</span></div>
                             <div class="modal-kv"><span class="modal-kv-key">Data Base Mestre</span><span class="modal-kv-val">${cx.dataOp.split('-').reverse().join('/')}</span></div>
                             <div class="modal-kv"><span class="modal-kv-key">Vencimento</span><span class="modal-kv-val">${cx.dataPag.split('-').reverse().join('/')}</span></div>
@@ -1251,5 +1340,178 @@ window.DB_Core = {
                 `;
             });
         }
+    },
+
+    generateTransactionPDF(data) {
+        if (!window.jspdf) {
+            showToast("Biblioteca de PDF não carregada. Recarregue a página.", "error");
+            return;
+        }
+
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pageWidth = 210;
+        const margin = 20;
+        const contentWidth = pageWidth - margin * 2;
+        let y = 25;
+
+        const isVenda = data.tipo === 'venda';
+        const titulo = isVenda ? 'VENDA' : 'ORÇAMENTO';
+        const codigo = data.codigo || '-';
+
+        // === CABEÇALHO ===
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(22);
+        pdf.setTextColor(79, 70, 229);
+        pdf.text('CioDaModa', margin, y);
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(100, 116, 139);
+        pdf.text('Sistema de Gestão Comercial', margin, y + 5);
+
+        pdf.setFontSize(18);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(15, 23, 42);
+        pdf.text(titulo, pageWidth - margin, y, { align: 'right' });
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(100, 116, 139);
+        pdf.text(`Código: ${codigo}`, pageWidth - margin, y + 5, { align: 'right' });
+        pdf.text(`Data Op.: ${data.dataOp ? data.dataOp.split('-').reverse().join('/') : '-'}`, pageWidth - margin, y + 10, { align: 'right' });
+        y += 18;
+
+        // Linha divisória
+        pdf.setDrawColor(79, 70, 229);
+        pdf.setLineWidth(0.6);
+        pdf.line(margin, y, pageWidth - margin, y);
+        y += 12;
+
+        // === CLIENTE ===
+        pdf.setFontSize(12);
+        pdf.setTextColor(15, 23, 42);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text('Cliente:', margin, y);
+        pdf.setFont('helvetica', 'normal');
+        pdf.text(data.clienteNome || 'Não informado', margin + 22, y);
+        y += 12;
+
+        // === TABELA DE PRODUTOS ===
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(12);
+        pdf.text('Produtos:', margin, y);
+        y += 8;
+
+        // Header da tabela
+        pdf.setFillColor(241, 245, 249);
+        pdf.rect(margin, y - 5, contentWidth, 8, 'F');
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(100, 116, 139);
+        pdf.text('PRODUTO', margin + 3, y);
+        pdf.text('QTD (M)', margin + 95, y);
+        pdf.text('VALOR UN', margin + 120, y);
+        pdf.text('SUBTOTAL', margin + 148, y);
+        y += 5;
+
+        pdf.setDrawColor(226, 232, 240);
+        pdf.setLineWidth(0.3);
+        pdf.line(margin, y, pageWidth - margin, y);
+        y += 6;
+
+        // Itens
+        const itens = data.itens || [];
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(11);
+        pdf.setTextColor(51, 65, 85);
+
+        itens.forEach((item, idx) => {
+            if (y > 250) {
+                pdf.addPage();
+                y = 25;
+            }
+            // Zebra striping
+            if (idx % 2 === 0) {
+                pdf.setFillColor(248, 250, 252);
+                pdf.rect(margin, y - 4, contentWidth, 7, 'F');
+            }
+            pdf.setTextColor(51, 65, 85);
+            pdf.text(item.produtoNome || '-', margin + 3, y);
+            pdf.text(`${item.qtd}`, margin + 95, y);
+            pdf.text((item.vun || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), margin + 120, y);
+            pdf.setFont('helvetica', 'bold');
+            pdf.text((item.subTotal || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), margin + 148, y);
+            pdf.setFont('helvetica', 'normal');
+            y += 7;
+        });
+
+        // Linha total
+        y += 3;
+        pdf.setDrawColor(79, 70, 229);
+        pdf.setLineWidth(0.6);
+        pdf.line(margin, y, pageWidth - margin, y);
+        y += 8;
+
+        pdf.setFontSize(13);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(15, 23, 42);
+        pdf.text('VALOR TOTAL:', margin, y);
+        pdf.setTextColor(79, 70, 229);
+        pdf.text((data.valorTotal || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), pageWidth - margin, y, { align: 'right' });
+        y += 12;
+
+        // Data de Pagamento (especialmente para Orçamento)
+        if (data.dataPag) {
+            pdf.setFontSize(12);
+            pdf.setTextColor(15, 23, 42);
+            pdf.setFont('helvetica', 'bold');
+            const lblPag = isVenda ? 'Previsão de Recebimento:' : 'Data de Pagamento:';
+            pdf.text(lblPag, margin, y);
+            pdf.setFont('helvetica', 'normal');
+            pdf.text(data.dataPag.split('-').reverse().join('/'), margin + 62, y);
+            y += 14;
+        }
+
+        // === ÁREA DE ASSINATURAS ===
+        y = Math.max(y + 20, 230);
+
+        pdf.setDrawColor(180, 180, 180);
+        pdf.setLineWidth(0.3);
+
+        const sigW = 65;
+        const sigLeftX = margin + 8;
+        const sigRightX = pageWidth - margin - sigW - 8;
+
+        // Assinatura Cliente
+        pdf.line(sigLeftX, y, sigLeftX + sigW, y);
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(100, 116, 139);
+        pdf.text('Nome: _______________________________', sigLeftX, y + 6);
+        pdf.text('CPF/CNPJ: ___________________________', sigLeftX, y + 12);
+        pdf.text('Data: ____/____/________', sigLeftX, y + 18);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(15, 23, 42);
+        pdf.text('CLIENTE', sigLeftX + sigW / 2, y + 25, { align: 'center' });
+
+        // Assinatura Vendedor
+        pdf.line(sigRightX, y, sigRightX + sigW, y);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(100, 116, 139);
+        pdf.text('Nome: _______________________________', sigRightX, y + 6);
+        pdf.text('CPF/CNPJ: ___________________________', sigRightX, y + 12);
+        pdf.text('Data: ____/____/________', sigRightX, y + 18);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(15, 23, 42);
+        pdf.text('VENDEDOR', sigRightX + sigW / 2, y + 25, { align: 'center' });
+
+        // Rodapé
+        pdf.setFontSize(7);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(180, 180, 180);
+        pdf.text('CioDaModa - Sistema de Gestão Comercial | Documento gerado automaticamente', pageWidth / 2, 290, { align: 'center' });
+
+        // Salvar
+        pdf.save(`${titulo}_${codigo}_${data.dataOp || 'sem-data'}.pdf`);
+        showToast("PDF gerado com sucesso!", "success");
     }
 };
