@@ -68,8 +68,42 @@ function toggleGlobalLoader(show) {
     }
 }
 
+function showConfirmModal(mensagem) {
+    return new Promise((resolve) => {
+        const md = document.getElementById('generic-modal');
+        const mb = document.getElementById('modal-body');
+        const mf = document.getElementById('modal-footer');
+        const titleEl = document.getElementById('modal-title');
+
+        titleEl.textContent = 'Confirmação';
+        mb.innerHTML = `<p style="padding: 8px 0; font-size: 0.95rem; color: var(--c-text-main);">${escapeHtml(mensagem)}</p>`;
+        mf.style.display = 'flex';
+        md.classList.add('open');
+
+        const cleanup = (resultado) => {
+            md.classList.remove('open');
+            mf.style.display = 'none';
+            titleEl.textContent = 'Detalhes do Registro';
+            resolve(resultado);
+        };
+
+        document.getElementById('btn-modal-confirm').addEventListener('click', () => cleanup(true), { once: true });
+        document.getElementById('btn-modal-cancel').addEventListener('click', () => cleanup(false), { once: true });
+    });
+}
+
+function escapeHtml(str) {
+    if (str == null) return '-';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 async function checkAccessLevel(emailCheck) {
-    if (!db) return true; // bypass if no DB
+    if (!db) return false;
     try {
         const userRef = doc(db, "usuarios_permitidos", emailCheck.toLowerCase());
         const docSnap = await getDoc(userRef);
@@ -142,7 +176,10 @@ function generateListView(title, desc, entityKey) {
         <div class="table-card">
             <div class="table-header-bar">
                 <span class="table-header-title">Listagem Ativa</span>
-                <span id="counter-${entityKey}" class="badge badge-neutral">Sincronizando...</span>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <input type="search" id="search-${entityKey}" class="input-field" placeholder="Buscar..." style="padding:6px 10px; width:200px; font-size:0.85rem;">
+                    <span id="counter-${entityKey}" class="badge badge-neutral">Sincronizando...</span>
+                </div>
             </div>
             <div style="overflow-x: auto;">
                 <table class="data-table">
@@ -341,6 +378,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const btnLogout = document.getElementById('btn-logout');
     if (btnLogout) { btnLogout.addEventListener('click', () => { if (auth) signOut(auth); }); }
+
+    const btnModalClose = document.getElementById('btn-modal-close');
+    if (btnModalClose) {
+        btnModalClose.addEventListener('click', () => {
+            document.getElementById('generic-modal').classList.remove('open');
+        });
+    }
 });
 
 // ==========================================
@@ -352,6 +396,7 @@ window.DB_Core = {
     activeEntity: null,
     editId: null,
     dashboardDataCache: [],
+    currentCart: [],
 
     initModule(routeId) {
         if (this.unsubscribeCurrent) {
@@ -359,24 +404,30 @@ window.DB_Core = {
             this.unsubscribeCurrent = null;
         }
 
-        // Se a vista contém botões "Novo" ativamos listeners
+        // Se a vista contém botões "Novo" ativamos listeners (cloneNode elimina listeners acumulados)
         const btnNew = document.querySelector('.btn-new');
         if (btnNew) {
-            btnNew.addEventListener('click', (e) => this.openDrawer(e.currentTarget.getAttribute('data-entity')));
+            const newBtnNew = btnNew.cloneNode(true);
+            btnNew.parentNode.replaceChild(newBtnNew, btnNew);
+            newBtnNew.addEventListener('click', (e) => this.openDrawer(e.currentTarget.getAttribute('data-entity')));
         }
 
-        // Fechamentos do modal
+        // Fechamentos do modal — cloneNode garante listener único mesmo com navegações repetidas
         const closeBtn = document.getElementById('btn-close-drawer');
         const cancelBtn = document.getElementById('btn-cancel-drawer');
         const saveBtn = document.getElementById('btn-save-drawer');
 
-        // Remove old listeners cloning node (Tricky vanilla solution para matar eventListeners antigos soltos)
         const newSaveBtn = saveBtn.cloneNode(true);
         saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
         newSaveBtn.addEventListener('click', () => this.handleSave());
 
-        closeBtn.onclick = () => this.toggleDrawer(false);
-        cancelBtn.onclick = () => this.toggleDrawer(false);
+        const newCloseBtn = closeBtn.cloneNode(true);
+        closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
+        newCloseBtn.addEventListener('click', () => this.toggleDrawer(false));
+
+        const newCancelBtn = cancelBtn.cloneNode(true);
+        cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+        newCancelBtn.addEventListener('click', () => this.toggleDrawer(false));
 
         // Dispara leituras se for rota de tabela (Entity Keys batem com collections Firestore)
         if (['clientes', 'fornecedores', 'produtos', 'transacoes', 'usuarios_permitidos'].includes(routeId)) {
@@ -419,7 +470,7 @@ window.DB_Core = {
         });
     },
 
-    openDrawer(entityKey, dataToEdit = null, docId = null) {
+    async openDrawer(entityKey, dataToEdit = null, docId = null) {
         this.editId = docId || null;
         const titleEl = document.getElementById('drawer-title');
         const formEl = document.getElementById('drawer-dynamic-form');
@@ -544,7 +595,7 @@ window.DB_Core = {
             this.populateFornecedoresSelect();
         } else if(entityKey === 'transacoes') {
             titleEl.innerText = docId ? "Editando Carrinho/Orçamento" : "Cadastrar Transação";
-            window.currentCart = [];
+            this.currentCart = [];
             formHTML = `
                 <div class="form-section-title">Natureza Comercial</div>
                 <div class="radio-group-modern" style="grid-template-columns: repeat(3, 1fr);">
@@ -625,68 +676,6 @@ window.DB_Core = {
                     </div>
                 </div>
             `;
-            setTimeout(() => {
-                const tzoffset = (new Date()).getTimezoneOffset() * 60000;
-                const localISOTime = (new Date(Date.now() - tzoffset)).toISOString().slice(0, 10);
-                document.getElementById('ipt-data-op').value = localISOTime;
-                
-                const rds = document.querySelectorAll('input[name="tipoOp"]');
-                const updateLbl = () => {
-                    const lc = document.getElementById('lbl-data-pag');
-                    const clienteInput = document.getElementById('ipt-cliente');
-                    const tipoVal = document.querySelector('input[name="tipoOp"]:checked').value;
-                    const isC = tipoVal === 'compra';
-                    if(lc) {
-                        lc.innerText = isC ? 'Previsão de Pagamento' : 'Previsão de Recebimento';
-                    }
-                    if(clienteInput) {
-                        clienteInput.disabled = isC;
-                        if(isC) {
-                            clienteInput.value = '';
-                            clienteInput.style.background = 'var(--c-light)';
-                            clienteInput.style.cursor = 'not-allowed';
-                        } else {
-                            clienteInput.style.background = '';
-                            clienteInput.style.cursor = '';
-                        }
-                    }
-                };
-                rds.forEach(r => r.addEventListener('change', updateLbl));
-                updateLbl();
-                
-                // Add Item Listener (Datalist-based extraction)
-                document.getElementById('btn-add-item').addEventListener('click', () => {
-                    const inp = document.getElementById('ipt-produto');
-                    const typedVal = inp.value.trim();
-                    const qtd = parseFloat(document.getElementById('ipt-qtd').value);
-                    const vStr = document.getElementById('ipt-valor-un').value.replace("R$ ","").replace(/\./g, "").replace(",", ".");
-                    const vun = parseFloat(vStr);
-                    
-                    // Buscar a option correspondente no datalist
-                    const dlOpts = document.querySelectorAll('#dl-produtos option');
-                    let matchedOpt = null;
-                    dlOpts.forEach(o => { if(o.value === typedVal) matchedOpt = o; });
-                    
-                    if(!matchedOpt || isNaN(qtd) || isNaN(vun) || qtd<=0 || vun<=0) {
-                        return showToast("Preencha Produto (válido da lista), Quantidade e Valor UN corretamente.", "warning");
-                    }
-                    
-                    window.currentCart.push({
-                        produtoId: matchedOpt.dataset.id,
-                        produtoNome: matchedOpt.value,
-                        fornecedorNome: matchedOpt.dataset.forn || '-',
-                        qtd: qtd,
-                        vun: vun,
-                        subTotal: qtd * vun
-                    });
-                    
-                    document.getElementById('ipt-qtd').value = '';
-                    document.getElementById('ipt-valor-un').value = '';
-                    inp.value = '';
-                    window.DB_Core.renderCartTable();
-                });
-            }, 50);
-            this.populateProdutosSelect();
         } else if (entityKey === 'usuarios_permitidos') {
             titleEl.innerText = docId ? "Editando Role de Segurança" : "Homologar Novo Operador";
             const isEditingId = docId ? 'readonly style="background: var(--c-light); cursor:not-allowed;"' : '';
@@ -717,52 +706,107 @@ window.DB_Core = {
 
         formEl.innerHTML = formHTML;
         this.applyMasks();
-        
-        if (entityKey === 'transacoes' || entityKey === 'produtos') {
-            const preSelect = dataToEdit ? (dataToEdit.fornecedorId || dataToEdit.produtoId) : null;
-            if (entityKey === 'produtos') this.populateFornecedoresSelect(preSelect);
-            else {
-                this.populateProdutosSelect(preSelect);
-                this.populateClientesDatalist(dataToEdit?.clienteId || null);
-            }
+
+        if (entityKey === 'transacoes') {
+            this.initTransactionForm();
+            await Promise.all([
+                this.populateProdutosSelect(),
+                this.populateClientesDatalist(dataToEdit?.clienteId || null)
+            ]);
+        } else if (entityKey === 'produtos') {
+            await this.populateFornecedoresSelect(dataToEdit?.fornecedorId || null);
         }
 
         if (dataToEdit) {
-            setTimeout(() => {
-                for(let key in dataToEdit) {
-                    let ipt = document.getElementById(`ipt-${key}`);
-                    if (ipt && key!=='timestamp' && ipt.type!=='radio') {
-                        ipt.value = dataToEdit[key];
-                        // Trigger input to fix formatting
-                        ipt.dispatchEvent(new Event('input'));
-                    }
-                }
-                
-                // Specific Transaction Edition (Carrinho mapping)
-                if (entityKey === 'transacoes') {
-                    if (dataToEdit.tipo) {
-                        const rdo = document.querySelector(`input[name="tipoOp"][value="${dataToEdit.tipo}"]`);
-                        if(rdo) {
-                            rdo.checked = true;
-                            rdo.dispatchEvent(new Event('change'));
-                        }
-                    }
-                    
-                    // Fallback to old scalar mode gracefully OR popuplate new map array
-                    window.currentCart = dataToEdit.itens ? [...dataToEdit.itens] : [{
-                        produtoId: dataToEdit.produtoId,
-                        produtoNome: dataToEdit.produtoNome,
-                        fornecedorNome: dataToEdit.fornecedorNome,
-                        qtd: dataToEdit.qtd,
-                        vun: (dataToEdit.valorTotal / dataToEdit.qtd) || 0,
-                        subTotal: dataToEdit.valorTotal
-                    }];
-                    window.DB_Core.renderCartTable();
-                }
-            }, 100);
+            this.fillFormWithData(entityKey, dataToEdit);
         }
 
         this.toggleDrawer(true);
+    },
+
+    initTransactionForm() {
+        const tzoffset = (new Date()).getTimezoneOffset() * 60000;
+        const localISOTime = (new Date(Date.now() - tzoffset)).toISOString().slice(0, 10);
+        document.getElementById('ipt-data-op').value = localISOTime;
+
+        const updateLbl = () => {
+            const lc = document.getElementById('lbl-data-pag');
+            const clienteInput = document.getElementById('ipt-cliente');
+            const tipoVal = document.querySelector('input[name="tipoOp"]:checked').value;
+            const isC = tipoVal === 'compra';
+            if(lc) lc.innerText = isC ? 'Previsão de Pagamento' : 'Previsão de Recebimento';
+            if(clienteInput) {
+                clienteInput.disabled = isC;
+                if(isC) {
+                    clienteInput.value = '';
+                    clienteInput.style.background = 'var(--c-light)';
+                    clienteInput.style.cursor = 'not-allowed';
+                } else {
+                    clienteInput.style.background = '';
+                    clienteInput.style.cursor = '';
+                }
+            }
+        };
+        document.querySelectorAll('input[name="tipoOp"]').forEach(r => r.addEventListener('change', updateLbl));
+        updateLbl();
+
+        document.getElementById('btn-add-item').addEventListener('click', () => {
+            const inp = document.getElementById('ipt-produto');
+            const typedVal = inp.value.trim();
+            const qtd = parseFloat(document.getElementById('ipt-qtd').value);
+            const vStr = document.getElementById('ipt-valor-un').value.replace("R$ ","").replace(/\./g, "").replace(",", ".");
+            const vun = parseFloat(vStr);
+
+            let matchedOpt = null;
+            document.querySelectorAll('#dl-produtos option').forEach(o => { if(o.value === typedVal) matchedOpt = o; });
+
+            if(!matchedOpt || isNaN(qtd) || isNaN(vun) || qtd<=0 || vun<=0) {
+                return showToast("Preencha Produto (válido da lista), Quantidade e Valor UN corretamente.", "warning");
+            }
+
+            this.currentCart.push({
+                produtoId: matchedOpt.dataset.id,
+                produtoNome: matchedOpt.value,
+                fornecedorNome: matchedOpt.dataset.forn || '-',
+                qtd: qtd,
+                vun: vun,
+                subTotal: qtd * vun
+            });
+
+            document.getElementById('ipt-qtd').value = '';
+            document.getElementById('ipt-valor-un').value = '';
+            inp.value = '';
+            this.renderCartTable();
+        });
+    },
+
+    fillFormWithData(entityKey, dataToEdit) {
+        for(let key in dataToEdit) {
+            const ipt = document.getElementById(`ipt-${key}`);
+            if (ipt && key !== 'timestamp' && ipt.type !== 'radio') {
+                ipt.value = dataToEdit[key];
+                ipt.dispatchEvent(new Event('input'));
+            }
+        }
+
+        if (entityKey === 'transacoes') {
+            if (dataToEdit.tipo) {
+                const rdo = document.querySelector(`input[name="tipoOp"][value="${dataToEdit.tipo}"]`);
+                if(rdo) {
+                    rdo.checked = true;
+                    rdo.dispatchEvent(new Event('change'));
+                }
+            }
+            this.currentCart = dataToEdit.itens ? [...dataToEdit.itens] : [{
+                produtoId: dataToEdit.produtoId,
+                produtoNome: dataToEdit.produtoNome,
+                fornecedorNome: dataToEdit.fornecedorNome,
+                qtd: dataToEdit.qtd,
+                vun: (dataToEdit.valorTotal / dataToEdit.qtd) || 0,
+                subTotal: dataToEdit.valorTotal
+            }];
+            this.renderCartTable();
+        }
     },
 
     renderCartTable() {
@@ -770,7 +814,7 @@ window.DB_Core = {
         const totEl = document.getElementById('cart-total-display');
         if(!tb) return;
         
-        if(!window.currentCart || window.currentCart.length === 0) {
+        if(!this.currentCart || this.currentCart.length === 0) {
             tb.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--c-text-muted);">Cesto Vazio.</td></tr>';
             if(totEl) totEl.innerText = 'R$ 0,00';
             return;
@@ -778,7 +822,7 @@ window.DB_Core = {
         
         tb.innerHTML = '';
         let bigT = 0;
-        window.currentCart.forEach((it, idx) => {
+        this.currentCart.forEach((it, idx) => {
             bigT += (it.subTotal || 0);
             const tr = document.createElement('tr');
             tr.innerHTML = `
@@ -795,8 +839,8 @@ window.DB_Core = {
         
         tb.querySelectorAll('.btn-rmv').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                const i = e.currentTarget.getAttribute('data-idx');
-                window.currentCart.splice(i, 1);
+                const i = parseInt(e.currentTarget.getAttribute('data-idx'), 10);
+                this.currentCart.splice(i, 1);
                 this.renderCartTable(); // call re-render self
             });
         });
@@ -805,7 +849,6 @@ window.DB_Core = {
     async populateFornecedoresSelect(preSelect = null) {
         if (!db) return;
         try {
-            const { getDocs, runTransaction } = await import("https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js");
             const snap = await getDocs(collection(db, 'fornecedores'));
             const select = document.getElementById('ipt-fornecedor');
             if (select) {
@@ -869,7 +912,7 @@ window.DB_Core = {
                     timestamp: new Date()
                 };
             } else if (this.activeEntity === 'transacoes') {
-                if(!window.currentCart || window.currentCart.length === 0) {
+                if(!this.currentCart || this.currentCart.length === 0) {
                     showToast("Por favor, preencha o carrinho com no mínimo 1 (um) item.", "error");
                     return toggleGlobalLoader(false);
                 }
@@ -886,17 +929,21 @@ window.DB_Core = {
                 }
 
                 const reqs = {};
-                window.currentCart.forEach(i => { reqs[i.produtoId] = (reqs[i.produtoId] || 0) + i.qtd; });
+                this.currentCart.forEach(i => { reqs[i.produtoId] = (reqs[i.produtoId] || 0) + i.qtd; });
                 
                 // Validação Logística Anti-Negativa em Lote
+                // Usa o cache do dashboard quando disponível para evitar leitura full-scan do Firestore
                 if (tipoOp === 'venda' || tipoOp === 'orcamento') {
-                    const snapV = await getDocs(collection(db, 'transacoes'));
+                    const fonte = this.dashboardDataCache.length > 0
+                        ? this.dashboardDataCache
+                        : await getDocs(collection(db, 'transacoes')).then(s => s.docs.map(dx => ({ id: dx.id, ...dx.data() })));
+
                     const estoqueMap = {};
-                    snapV.forEach(dx => {
-                        const tr = dx.data();
-                        if (this.editId && dx.id === this.editId) return;
+                    fonte.forEach(tr => {
+                        const trId = tr.id || null;
+                        if (this.editId && trId === this.editId) return;
                         if (tr.tipo === 'orcamento') return;
-                        
+
                         const ls = tr.itens || [{ produtoId: tr.produtoId, qtd: tr.qtd }];
                         ls.forEach(it => {
                             if(!it.produtoId) return;
@@ -912,7 +959,8 @@ window.DB_Core = {
                                 showToast(`Operação Negada! Produto sem saldo suficiente. Resta base ${saldo} Metros.`, "error");
                                 return toggleGlobalLoader(false);
                             } else {
-                                if(!confirm(`Atenção de Rito: Algum produto orçado possui saldo insuficiente em nuvem (Base real atualizada: ${saldo}M). Deseja manter o Orçamento em espera?`)) {
+                                const prosseguir = await showConfirmModal(`Atenção: Algum produto orçado possui saldo insuficiente (base atual: ${saldo}M). Deseja manter o Orçamento em espera?`);
+                                if (!prosseguir) {
                                     return toggleGlobalLoader(false);
                                 }
                             }
@@ -932,8 +980,8 @@ window.DB_Core = {
 
                 payload = {
                     tipo: tipoOp,
-                    itens: window.currentCart,
-                    valorTotal: window.currentCart.reduce((a,b)=>a+b.subTotal, 0),
+                    itens: this.currentCart,
+                    valorTotal: this.currentCart.reduce((a,b)=>a+b.subTotal, 0),
                     clienteId: clienteId,
                     clienteNome: clienteNome,
                     dataOp: document.getElementById('ipt-data-op').value,
@@ -999,7 +1047,19 @@ window.DB_Core = {
         if (!db) return;
         const tbody = document.getElementById(`tbody-${collectionName}`);
         const countSpan = document.getElementById(`counter-${collectionName}`);
+        const searchInput = document.getElementById(`search-${collectionName}`);
         if (!tbody) return;
+
+        const applySearch = (term) => {
+            const t = term.toLowerCase();
+            tbody.querySelectorAll('tr[data-search]').forEach(row => {
+                row.style.display = row.dataset.search.includes(t) ? '' : 'none';
+            });
+        };
+
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => applySearch(e.target.value));
+        }
 
         this.unsubscribeCurrent = onSnapshot(collection(db, collectionName), (snapshot) => {
             tbody.innerHTML = '';
@@ -1017,25 +1077,25 @@ window.DB_Core = {
                 // Mapeamento dinâmico de colunas (Glassmorphism tr hover via CSS .data-table tbody tr:hover)
                 if (collectionName === 'clientes') {
                     tr.innerHTML = `
-                        <td style="font-weight: 600;">${data.razao || '-'}</td>
-                        <td>${data.fantasia || '-'}</td>
-                        <td style="font-family: monospace; color: var(--c-text-muted);">${data.cnpj || '-'}</td>
-                        <td style="font-family: monospace;">${data.telefone || '-'}</td>
+                        <td style="font-weight: 600;">${escapeHtml(data.razao)}</td>
+                        <td>${escapeHtml(data.fantasia)}</td>
+                        <td style="font-family: monospace; color: var(--c-text-muted);">${escapeHtml(data.cnpj)}</td>
+                        <td style="font-family: monospace;">${escapeHtml(data.telefone)}</td>
                     `;
                 } else if (collectionName === 'fornecedores') {
                     tr.innerHTML = `
-                        <td style="font-weight: 600;">${data.fantasia || '-'}</td>
-                        <td style="font-family: monospace; color: var(--c-text-muted);">${data.cnpj || '-'}</td>
-                        <td style="font-family: monospace;">${data.telefone || '-'}</td>
-                        <td><span class="badge badge-info">${data.vendedor || '-'}</span></td>
+                        <td style="font-weight: 600;">${escapeHtml(data.fantasia)}</td>
+                        <td style="font-family: monospace; color: var(--c-text-muted);">${escapeHtml(data.cnpj)}</td>
+                        <td style="font-family: monospace;">${escapeHtml(data.telefone)}</td>
+                        <td><span class="badge badge-info">${escapeHtml(data.vendedor)}</span></td>
                     `;
                 } else if (collectionName === 'produtos') {
                     tr.innerHTML = `
                         <td style="text-align: center;"><div style="width:36px; height:36px; background:var(--c-light); border-radius:6px; display:inline-flex; align-items:center; justify-content:center; color:var(--c-text-muted); border:1px solid var(--c-border);"><span class="material-symbols-outlined" style="font-size:18px;">category</span></div></td>
-                        <td style="font-weight: 600;">${data.nome || '-'}</td>
-                        <td>${data.fornecedorNome || '-'}</td>
-                        <td>${data.cor || '-'}</td>
-                        <td><span class="badge badge-neutral">${data.unidade_medida || 'metros'}</span></td>
+                        <td style="font-weight: 600;">${escapeHtml(data.nome)}</td>
+                        <td>${escapeHtml(data.fornecedorNome)}</td>
+                        <td>${escapeHtml(data.cor)}</td>
+                        <td><span class="badge badge-neutral">${escapeHtml(data.unidade_medida) || 'metros'}</span></td>
                     `;
                 } else if (collectionName === 'transacoes') {
                     const isCompra = data.tipo === 'compra';
@@ -1045,31 +1105,36 @@ window.DB_Core = {
                     let trLabel = 'COMPRA';
                     if(isOrca) { badgeClass = 'badge-neutral'; icon = 'request_quote'; trLabel = 'ORÇAMENTO'; }
                     else if(!isCompra) { badgeClass = 'badge-info'; icon = 'north_east'; trLabel = 'VENDA'; }
-                    
+
                     const valFormat = (data.valorTotal || 0).toLocaleString('pt-BR', {style: 'currency', currency:'BRL'});
-                    const cd = data.codigo || '-';
-                    
+                    const cd = escapeHtml(data.codigo);
+                    const dataOpFmt = (data.dataOp || '').split('-').reverse().join('/') || '-';
+                    const dataPagFmt = (data.dataPag || '').split('-').reverse().join('/') || '-';
+
                     let arrItens = data.itens || (data.produtoNome ? [{produtoNome: data.produtoNome, qtd: data.qtd}] : []);
-                    let f_str = arrItens.map(i => `<span style="display:inline-block; margin-bottom:2px;">${i.qtd} Mts x <span style="font-weight:600">${i.produtoNome}</span></span>`).join('<br>');
-                    
+                    let f_str = arrItens.map(i => `<span style="display:inline-block; margin-bottom:2px;">${escapeHtml(i.qtd)} Mts x <span style="font-weight:600">${escapeHtml(i.produtoNome)}</span></span>`).join('<br>');
+
                     tr.innerHTML = `
                         <td style="font-weight: 700; color:var(--c-text-muted);">${cd}</td>
-                        <td style="font-weight: 500;">${data.dataOp.split('-').reverse().join('/')}</td>
+                        <td style="font-weight: 500;">${dataOpFmt}</td>
                         <td><span class="badge ${badgeClass}" style="display:inline-flex; gap:4px; align-items:center;"><span class="material-symbols-outlined" style="font-size:12px;">${icon}</span> ${trLabel}</span></td>
-                        <td style="font-size: 0.85rem; font-weight: 500;">${data.clienteNome || '-'}</td>
+                        <td style="font-size: 0.85rem; font-weight: 500;">${escapeHtml(data.clienteNome)}</td>
                         <td style="font-size: 0.75rem; line-height: 1.2;">${f_str}</td>
                         <td style="font-family: monospace; font-weight:600;">${valFormat}</td>
-                        <td style="color: var(--c-text-muted); font-size:0.85rem;">${data.dataPag.split('-').reverse().join('/')}</td>
+                        <td style="color: var(--c-text-muted); font-size:0.85rem;">${dataPagFmt}</td>
                     `;
                 } else if (collectionName === 'usuarios_permitidos') {
                     const st = data.status === 'ativo' ? '<span class="badge badge-success">ATIVO</span>' : '<span class="badge badge-neutral" style="background:#fecdd3;color:#881337;">INATIVO</span>';
                     const rl = data.role === 'admin' ? '<span style="color:var(--c-brandHover);font-weight:700;">Administrador</span>' : '<span style="color:var(--c-text-muted);">Comum</span>';
                     tr.innerHTML = `
-                        <td style="font-weight:600; font-size:0.9rem;">${data.email || docSnap.id}</td>
+                        <td style="font-weight:600; font-size:0.9rem;">${escapeHtml(data.email || docSnap.id)}</td>
                         <td>${rl}</td>
                         <td>${st}</td>
                     `;
                 }
+
+                // Indexa texto para busca client-side
+                tr.dataset.search = (tr.textContent || '').toLowerCase();
 
                 // Injeção da Coluna de Ações
                 const tdAction = document.createElement('td');
@@ -1108,10 +1173,11 @@ window.DB_Core = {
                         showToast("Trava corporativa: Não é possível excluir a própria conta logada do ecossistema.", "error");
                         return;
                     }
-                    if (confirm("Confirma a exclusão deste item corporativo? Esta ação é irreversível e ocorrerá em nuvem na hora.")) {
+                    const confirmado = await showConfirmModal("Confirma a exclusão deste item? Esta ação é irreversível e ocorrerá em nuvem na hora.");
+                    if (confirmado) {
                         try {
                             await deleteDoc(doc(db, collectionName, docSnap.id));
-                            showToast("Objeto deletado na nuvem Firestore", "success");
+                            showToast("Registro excluído na nuvem com sucesso.", "success");
                         } catch (err) {
                             showToast("Falha " + err.message, "error");
                         }
@@ -1121,7 +1187,8 @@ window.DB_Core = {
                 tbody.appendChild(tr);
             });
 
-            if (countSpan) countSpan.innerText = `${snapshot.size} fluxo(s) sincronizado(s)`;
+            if (countSpan) countSpan.innerText = `${snapshot.size} registro(s)`;
+            if (searchInput && searchInput.value) applySearch(searchInput.value);
 
         }, (error) => {
             showToast("Falha de Escuta Snapshot DB: " + error.message, "error");
@@ -1131,7 +1198,6 @@ window.DB_Core = {
     async populateProdutosSelect(preSelect = null) {
         if(!db) return;
         try {
-            const { getDocs } = await import("https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js");
             const snap = await getDocs(collection(db, 'produtos'));
             const dl = document.getElementById('dl-produtos');
             const inp = document.getElementById('ipt-produto');
@@ -1159,7 +1225,6 @@ window.DB_Core = {
     async populateClientesDatalist(preSelectId = null) {
         if(!db) return;
         try {
-            const { getDocs } = await import("https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js");
             const snap = await getDocs(collection(db, 'clientes'));
             const dl = document.getElementById('dl-clientes');
             const inp = document.getElementById('ipt-cliente');
@@ -1187,14 +1252,19 @@ window.DB_Core = {
         
         const filtro = document.getElementById('filtro-data-base');
         const btnLimpar = document.getElementById('btn-limpar-filtro');
-        
+        let debounceTimer = null;
+        const renderBIDebounced = () => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => this.renderBI(), 300);
+        };
+
         if (filtro) {
-            filtro.addEventListener('change', () => this.renderBI());
+            filtro.addEventListener('change', renderBIDebounced);
         }
         if (btnLimpar && filtro) {
-            btnLimpar.addEventListener('click', () => { 
-                filtro.value = ''; 
-                this.renderBI(); 
+            btnLimpar.addEventListener('click', () => {
+                filtro.value = '';
+                renderBIDebounced();
             });
         }
 
@@ -1225,7 +1295,7 @@ window.DB_Core = {
         this.dashboardDataCache.forEach(d => {
             const isCompra = d.tipo === 'compra';
             const isOrca = d.tipo === 'orcamento';
-            const dPeriodo = d.dataPag.substring(0, 7);
+            const dPeriodo = (d.dataPag || '').substring(0, 7);
             const inPeriod = (!filtroM || dPeriodo === filtroM);
 
             if(isOrca) {
@@ -1275,7 +1345,10 @@ window.DB_Core = {
         fluxoList.sort((a,b) => new Date(a.dataPag) - new Date(b.dataPag));
         if(tbodyFluxo) {
             tbodyFluxo.innerHTML = '';
-            if(fluxoList.length === 0) tbodyFluxo.innerHTML = '<tr><td colspan="3" class="table-empty">Sem fluxo financeiro.</td></tr>';
+            if(fluxoList.length === 0) {
+                tbodyFluxo.innerHTML = '<tr><td colspan="3" class="table-empty">Sem fluxo financeiro.</td></tr>';
+            }
+            const totalFluxo = fluxoList.length;
             fluxoList.slice(0, 50).forEach(cx => {
                 const isC = cx.tipo === 'compra';
                 let stBadge = '';
@@ -1296,49 +1369,58 @@ window.DB_Core = {
                     if(md && mb) {
                         mb.innerHTML = `
                             <div class="modal-kv"><span class="modal-kv-key">Status Financeiro</span><span class="modal-kv-val">${stBadge}</span></div>
-                            <div class="modal-kv"><span class="modal-kv-key">Cliente</span><span class="modal-kv-val">${cx.clienteNome || 'Não informado'}</span></div>
-                            <div class="modal-kv"><span class="modal-kv-key">Recorte do Lote Interno</span><span class="modal-kv-val">${cx.pName} ${cx.itLength>1 ? `(+${cx.itLength-1} outros)`:''}</span></div>
+                            <div class="modal-kv"><span class="modal-kv-key">Cliente</span><span class="modal-kv-val">${escapeHtml(cx.clienteNome) || 'Não informado'}</span></div>
+                            <div class="modal-kv"><span class="modal-kv-key">Recorte do Lote Interno</span><span class="modal-kv-val">${escapeHtml(cx.pName)} ${cx.itLength>1 ? `(+${cx.itLength-1} outros)`:''}</span></div>
                             <div class="modal-kv"><span class="modal-kv-key">Natureza / Transação</span><span class="modal-kv-val">${isC ? 'Compra (Custo)' : 'Venda (Faturamento)'}</span></div>
                             <div class="modal-kv"><span class="modal-kv-key">Valor Agregado (BR)</span><span class="modal-kv-val">${cBRL(cx.valorTotal)}</span></div>
-                            <div class="modal-kv"><span class="modal-kv-key">Data Base Mestre</span><span class="modal-kv-val">${cx.dataOp.split('-').reverse().join('/')}</span></div>
-                            <div class="modal-kv"><span class="modal-kv-key">Vencimento</span><span class="modal-kv-val">${cx.dataPag.split('-').reverse().join('/')}</span></div>
+                            <div class="modal-kv"><span class="modal-kv-key">Data Base Mestre</span><span class="modal-kv-val">${(cx.dataOp || '').split('-').reverse().join('/') || '-'}</span></div>
+                            <div class="modal-kv"><span class="modal-kv-key">Vencimento</span><span class="modal-kv-val">${(cx.dataPag || '').split('-').reverse().join('/') || '-'}</span></div>
                         `;
                         md.classList.add('open');
                     }
                 });
                 tbodyFluxo.appendChild(tr);
             });
+            if (totalFluxo > 50) {
+                const trAviso = document.createElement('tr');
+                trAviso.innerHTML = `<td colspan="3" style="text-align:center; font-size:0.8rem; color:var(--c-text-muted); padding:8px;">Exibindo 50 de ${totalFluxo} registros</td>`;
+                tbodyFluxo.appendChild(trAviso);
+            }
         }
         
         if(tbodyRent) {
-            tbodyRent.innerHTML = '';
             const rents = Object.values(rentMap);
-            if(rents.length === 0) tbodyRent.innerHTML = '<tr><td colspan="3" class="table-empty">Sem faturamento aparente.</td></tr>';
-            rents.forEach(r => {
-                const perc = r.inv > 0 ? ((r.luc - r.inv) / r.inv * 100).toFixed(0) : 100;
-                tbodyRent.innerHTML += `
-                    <tr>
-                        <td style="font-weight:600; font-size:0.85rem;">${r.nome}</td>
-                        <td style="font-family:monospace; color:var(--c-text-muted);">${cBRL(r.inv)}</td>
-                        <td style="font-family:monospace; font-weight:700; ${r.luc >= r.inv ? 'color:var(--c-success)' : 'color:var(--c-danger)'};">${cBRL(r.luc - r.inv)} <span style="font-size:0.75rem;">(${perc}%)</span></td>
-                    </tr>
-                `;
-            });
+            if(rents.length === 0) {
+                tbodyRent.innerHTML = '<tr><td colspan="3" class="table-empty">Sem faturamento aparente.</td></tr>';
+            } else {
+                tbodyRent.innerHTML = rents.map(r => {
+                    const perc = r.inv > 0 ? ((r.luc - r.inv) / r.inv * 100).toFixed(0) : 100;
+                    return `
+                        <tr>
+                            <td style="font-weight:600; font-size:0.85rem;">${escapeHtml(r.nome)}</td>
+                            <td style="font-family:monospace; color:var(--c-text-muted);">${cBRL(r.inv)}</td>
+                            <td style="font-family:monospace; font-weight:700; ${r.luc >= r.inv ? 'color:var(--c-success)' : 'color:var(--c-danger)'};">${cBRL(r.luc - r.inv)} <span style="font-size:0.75rem;">(${perc}%)</span></td>
+                        </tr>
+                    `;
+                }).join('');
+            }
         }
 
         if(tbodyEstoque) {
-            tbodyEstoque.innerHTML = '';
             const skus = Object.values(estoqueMap);
-            if(skus.length === 0) tbodyEstoque.innerHTML = '<tr><td colspan="2" class="table-empty">Logística Ociosa.</td></tr>';
-            skus.forEach(sk => {
-                const st = sk.saldo < 0 ? 'color:var(--c-danger)' : (sk.saldo > 0 ? 'color:var(--c-success)' : '');
-                tbodyEstoque.innerHTML += `
-                    <tr>
-                        <td style="font-weight:600; font-size:0.85rem">${sk.nome}</td>
-                        <td style="font-family:monospace; font-weight:700; ${st}">${sk.saldo} Metros</td>
-                    </tr>
-                `;
-            });
+            if(skus.length === 0) {
+                tbodyEstoque.innerHTML = '<tr><td colspan="2" class="table-empty">Logística Ociosa.</td></tr>';
+            } else {
+                tbodyEstoque.innerHTML = skus.map(sk => {
+                    const st = sk.saldo < 0 ? 'color:var(--c-danger)' : (sk.saldo > 0 ? 'color:var(--c-success)' : '');
+                    return `
+                        <tr>
+                            <td style="font-weight:600; font-size:0.85rem">${escapeHtml(sk.nome)}</td>
+                            <td style="font-family:monospace; font-weight:700; ${st}">${sk.saldo} Metros</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
         }
     },
 
