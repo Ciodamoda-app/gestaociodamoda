@@ -1090,3 +1090,54 @@ label {
 }
 
 .file-name-display.has-file { color: var(--c-brand); font-weight: 500; }
+
+/* Toggle switch (aba Configurações) */
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.settings-toggle-row:last-of-type { border-bottom: none; }
+
+.settings-toggle-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--c-text-main);
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.toggle-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+
+.toggle-track {
+  width: 44px;
+  height: 24px;
+  background: #cbd5e1;
+  border-radius: 99px;
+  transition: background 0.25s;
+  display: flex;
+  align-items: center;
+  padding: 3px;
+}
+
+.toggle-switch input:checked + .toggle-track { background: var(--c-brand); }
+
+.toggle-thumb {
+  width: 18px;
+  height: 18px;
+  background: white;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toggle-switch input:checked + .toggle-track .toggle-thumb { transform: translateX(20px); }

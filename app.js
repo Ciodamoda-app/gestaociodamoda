@@ -102,6 +102,20 @@ function escapeHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
+function applyAppSettings() {
+    const s = window.AppSettings || {};
+
+    const brandIcon = document.querySelector('.brand-icon');
+    if (brandIcon) {
+        brandIcon.innerHTML = s.logoUrl
+            ? `<img src="${escapeHtml(s.logoUrl)}" alt="Logo" style="width:28px;height:28px;object-fit:contain;">`
+            : `<span class="material-symbols-outlined">monitoring</span>`;
+    }
+
+    const navForn = document.querySelector('[data-route="fornecedores"]')?.closest('li');
+    if (navForn) navForn.style.display = s.modules?.enableSuppliers === false ? 'none' : '';
+}
+
 async function checkAccessLevel(emailCheck) {
     if (!db) return false;
     try {
@@ -299,6 +313,9 @@ const ViewTemplates = {
             <button class="admin-tab-btn" data-admin-tab="backup">
                 <span class="material-symbols-outlined">backup</span> Backup de Dados
             </button>
+            <button class="admin-tab-btn" data-admin-tab="configuracoes">
+                <span class="material-symbols-outlined">tune</span> Configurações
+            </button>
         </div>
         <div id="admin-tab-body"></div>
     `
@@ -375,6 +392,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
                     loginView.classList.add('hidden');
                     appView.classList.remove('hidden');
+
+                    const settingsSnap = await getDoc(doc(db, 'metadata', 'settings'));
+                    window.AppSettings = settingsSnap.exists() ? settingsSnap.data() : {};
+                    applyAppSettings();
 
                     SPA.navigate('dashb');
                 }
@@ -498,6 +519,10 @@ window.DB_Core = {
             this.activeEntity = null;
             body.innerHTML = this.renderBackupView();
             this.initBackupModule();
+        } else if (tab === 'configuracoes') {
+            this.activeEntity = null;
+            body.innerHTML = this.renderSettingsView();
+            this.initSettingsModule();
         }
     },
 
@@ -610,6 +635,139 @@ window.DB_Core = {
 
         restoreBtn.addEventListener('click', () => {
             if (pendingBackupData) this.restoreBackup(pendingBackupData);
+        });
+    },
+
+    renderSettingsView() {
+        const s = window.AppSettings || {};
+        const logoVal   = escapeHtml(s.logoUrl || '');
+        const subVal    = escapeHtml(s.pdf?.subtitle || 'Sistema de Gestão Comercial');
+        const chkQuotes = s.modules?.enableQuotes   !== false;
+        const chkSuppl  = s.modules?.enableSuppliers !== false;
+        const chkCart   = s.modules?.enableCart      !== false;
+
+        const toggle = (id, label, checked) => `
+            <div class="settings-toggle-row">
+                <div>
+                    <span class="settings-toggle-label">${label}</span>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="${id}" ${checked ? 'checked' : ''}>
+                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                </label>
+            </div>`;
+
+        return `
+            <div class="backup-grid">
+                <div class="table-card">
+                    <div class="table-header-bar">
+                        <span class="table-header-title" style="display:flex;align-items:center;gap:8px;">
+                            <span class="material-symbols-outlined" style="color:var(--c-brand);font-size:20px;">image</span>
+                            Identidade Visual
+                        </span>
+                    </div>
+                    <div class="backup-card-body">
+                        <p class="backup-card-desc">URL de uma imagem para substituir o ícone padrão no sidebar. Deixe em branco para usar o ícone padrão.</p>
+                        <div class="form-group">
+                            <label>URL da Logo</label>
+                            <input type="url" id="cfg-logo-url" class="input-field" placeholder="https://..." value="${logoVal}">
+                        </div>
+                        <div id="cfg-logo-preview" style="margin-bottom:16px; ${logoVal ? '' : 'display:none;'}">
+                            <img id="cfg-logo-img" src="${logoVal}" alt="Preview" style="height:40px;object-fit:contain;border:1px solid var(--c-border);border-radius:6px;padding:4px;">
+                        </div>
+                        <button id="btn-save-logo" class="btn-primary">
+                            <span class="material-symbols-outlined">save</span> Salvar Logo
+                        </button>
+                    </div>
+                </div>
+
+                <div class="table-card">
+                    <div class="table-header-bar">
+                        <span class="table-header-title" style="display:flex;align-items:center;gap:8px;">
+                            <span class="material-symbols-outlined" style="color:var(--c-brand);font-size:20px;">toggle_on</span>
+                            Módulos Ativos
+                        </span>
+                    </div>
+                    <div class="backup-card-body">
+                        <p class="backup-card-desc">Ative ou desative módulos do sistema. Alterações têm efeito imediato para todos os usuários.</p>
+                        ${toggle('cfg-enable-quotes',    'Orçamentos', chkQuotes)}
+                        ${toggle('cfg-enable-suppliers', 'Módulo de Fornecedores', chkSuppl)}
+                        ${toggle('cfg-enable-cart',      'Carrinho Multi-Item em Transações', chkCart)}
+                        <div style="margin-top:20px;">
+                            <button id="btn-save-modules" class="btn-primary">
+                                <span class="material-symbols-outlined">save</span> Salvar Módulos
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="table-card" style="grid-column: 1 / -1;">
+                    <div class="table-header-bar">
+                        <span class="table-header-title" style="display:flex;align-items:center;gap:8px;">
+                            <span class="material-symbols-outlined" style="color:var(--c-brand);font-size:20px;">picture_as_pdf</span>
+                            Documentos (PDF)
+                        </span>
+                    </div>
+                    <div class="backup-card-body">
+                        <p class="backup-card-desc">Texto exibido no cabeçalho e rodapé dos PDFs de Venda e Orçamento gerados pelo sistema.</p>
+                        <div class="form-group" style="max-width:480px;">
+                            <label>Subtítulo do PDF</label>
+                            <input type="text" id="cfg-pdf-subtitle" class="input-field" placeholder="Sistema de Gestão Comercial" value="${subVal}">
+                        </div>
+                        <button id="btn-save-pdf" class="btn-primary">
+                            <span class="material-symbols-outlined">save</span> Salvar PDF
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    initSettingsModule() {
+        // Preview ao vivo da logo
+        const logoInput = document.getElementById('cfg-logo-url');
+        const logoPreview = document.getElementById('cfg-logo-preview');
+        const logoImg = document.getElementById('cfg-logo-img');
+        logoInput.addEventListener('input', () => {
+            const val = logoInput.value.trim();
+            if (val) { logoImg.src = val; logoPreview.style.display = 'block'; }
+            else { logoPreview.style.display = 'none'; }
+        });
+
+        // Salvar logo
+        document.getElementById('btn-save-logo').addEventListener('click', async () => {
+            const logoUrl = logoInput.value.trim();
+            try {
+                await setDoc(doc(db, 'metadata', 'settings'), { logoUrl }, { merge: true });
+                window.AppSettings = { ...window.AppSettings, logoUrl };
+                applyAppSettings();
+                showToast('Logo atualizada com sucesso.', 'success');
+            } catch (e) { showToast('Erro ao salvar: ' + e.message, 'error'); }
+        });
+
+        // Salvar módulos
+        document.getElementById('btn-save-modules').addEventListener('click', async () => {
+            const modules = {
+                enableQuotes:    document.getElementById('cfg-enable-quotes').checked,
+                enableSuppliers: document.getElementById('cfg-enable-suppliers').checked,
+                enableCart:      document.getElementById('cfg-enable-cart').checked,
+            };
+            try {
+                await setDoc(doc(db, 'metadata', 'settings'), { modules }, { merge: true });
+                window.AppSettings = { ...window.AppSettings, modules };
+                applyAppSettings();
+                showToast('Módulos salvos. Recarregue a página para aplicar em todos os formulários.', 'success');
+            } catch (e) { showToast('Erro ao salvar: ' + e.message, 'error'); }
+        });
+
+        // Salvar subtítulo PDF
+        document.getElementById('btn-save-pdf').addEventListener('click', async () => {
+            const subtitle = document.getElementById('cfg-pdf-subtitle').value.trim();
+            try {
+                await setDoc(doc(db, 'metadata', 'settings'), { pdf: { subtitle } }, { merge: true });
+                window.AppSettings = { ...window.AppSettings, pdf: { subtitle } };
+                showToast('Configuração de PDF salva.', 'success');
+            } catch (e) { showToast('Erro ao salvar: ' + e.message, 'error'); }
         });
     },
 
@@ -975,6 +1133,14 @@ window.DB_Core = {
         };
         document.querySelectorAll('input[name="tipoOp"]').forEach(r => r.addEventListener('change', updateLbl));
         updateLbl();
+
+        if (window.AppSettings?.modules?.enableQuotes === false) {
+            document.querySelector('input[name="tipoOp"][value="orcamento"]')?.closest('.radio-option')?.remove();
+        }
+
+        if (window.AppSettings?.modules?.enableCart === false) {
+            document.getElementById('btn-add-item')?.closest('.cart-builder')?.style.setProperty('display', 'none');
+        }
 
         document.getElementById('btn-add-item').addEventListener('click', () => {
             const inp = document.getElementById('ipt-produto');
@@ -1675,7 +1841,7 @@ window.DB_Core = {
         pdf.setFontSize(9);
         pdf.setFont('helvetica', 'normal');
         pdf.setTextColor(100, 116, 139);
-        pdf.text('Sistema de Gestão Comercial', margin, y + 5);
+        pdf.text(window.AppSettings?.pdf?.subtitle || 'Sistema de Gestão Comercial', margin, y + 5);
 
         pdf.setFontSize(18);
         pdf.setFont('helvetica', 'bold');
@@ -1816,7 +1982,7 @@ window.DB_Core = {
         pdf.setFontSize(7);
         pdf.setFont('helvetica', 'normal');
         pdf.setTextColor(180, 180, 180);
-        pdf.text('CioDaModa - Sistema de Gestão Comercial | Documento gerado automaticamente', pageWidth / 2, 290, { align: 'center' });
+        pdf.text(`CioDaModa - ${window.AppSettings?.pdf?.subtitle || 'Sistema de Gestão Comercial'} | Documento gerado automaticamente`, pageWidth / 2, 290, { align: 'center' });
 
         // Salvar
         pdf.save(`${titulo}_${codigo}_${data.dataOp || 'sem-data'}.pdf`);
