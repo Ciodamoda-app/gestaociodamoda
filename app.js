@@ -285,7 +285,23 @@ const ViewTemplates = {
     fornecedores: () => generateListView('Fornecedores', 'Gerencie as fábricas e seus representantes parceiros.', 'fornecedores'),
     produtos: () => generateListView('Produtos em Estoque', 'Cadastro de referências, SKUs unitários e cores.', 'produtos'),
     transacoes: () => generateListView('Módulo de Transações', 'Registros corporativos de Compra (Investimento/Entrada) e Venda (Faturamento/Saída).', 'transacoes'),
-    usuarios_permitidos: () => generateListView('Gestão de Usuários', 'Controle os privilégios e a ativação de colaboradores.', 'usuarios_permitidos')
+    admin: () => `
+        <div class="page-header">
+            <div>
+                <h2 class="page-title">Administração do Sistema</h2>
+                <p class="page-desc">Controle de acesso, segurança e integridade dos dados.</p>
+            </div>
+        </div>
+        <div class="admin-tabs-bar">
+            <button class="admin-tab-btn active" data-admin-tab="usuarios">
+                <span class="material-symbols-outlined">admin_panel_settings</span> Usuários
+            </button>
+            <button class="admin-tab-btn" data-admin-tab="backup">
+                <span class="material-symbols-outlined">backup</span> Backup de Dados
+            </button>
+        </div>
+        <div id="admin-tab-body"></div>
+    `
 };
 
 const SPA = {
@@ -352,9 +368,9 @@ document.addEventListener("DOMContentLoaded", () => {
                     document.getElementById('user-display-name').innerText = user.displayName || user.email.split('@')[0];
                     if (user.photoURL) document.getElementById('user-avatar').src = user.photoURL;
                     
-                    const navUsers = document.getElementById('nav-sys-users');
-                    if (navUsers) {
-                        navUsers.style.display = isPermitido.role === 'admin' ? 'flex' : 'none';
+                    const navAdmin = document.getElementById('nav-admin');
+                    if (navAdmin) {
+                        navAdmin.style.display = isPermitido.role === 'admin' ? 'flex' : 'none';
                     }
 
                     loginView.classList.add('hidden');
@@ -430,12 +446,22 @@ window.DB_Core = {
         newCancelBtn.addEventListener('click', () => this.toggleDrawer(false));
 
         // Dispara leituras se for rota de tabela (Entity Keys batem com collections Firestore)
-        if (['clientes', 'fornecedores', 'produtos', 'transacoes', 'usuarios_permitidos'].includes(routeId)) {
+        if (['clientes', 'fornecedores', 'produtos', 'transacoes'].includes(routeId)) {
             this.activeEntity = routeId;
             this.startReadStream(routeId);
         } else if (routeId === 'dashb') {
             this.activeEntity = null;
             this.startDashboardStream();
+        } else if (routeId === 'admin') {
+            this.activeEntity = null;
+            this.initAdminTab('usuarios');
+            document.querySelector('.admin-tabs-bar').addEventListener('click', (e) => {
+                const btn = e.target.closest('.admin-tab-btn');
+                if (!btn) return;
+                document.querySelectorAll('.admin-tab-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.initAdminTab(btn.dataset.adminTab);
+            });
         } else {
             this.activeEntity = null;
         }
@@ -445,6 +471,206 @@ window.DB_Core = {
         const overlay = document.getElementById('global-drawer');
         if (show) overlay.classList.add('open');
         else overlay.classList.remove('open');
+    },
+
+    initAdminTab(tab) {
+        if (this.unsubscribeCurrent) {
+            this.unsubscribeCurrent();
+            this.unsubscribeCurrent = null;
+        }
+        const body = document.getElementById('admin-tab-body');
+        if (!body) return;
+
+        if (tab === 'usuarios') {
+            body.innerHTML = generateListView('Gestão de Usuários', 'Controle os privilégios e a ativação de colaboradores.', 'usuarios_permitidos');
+            this.activeEntity = 'usuarios_permitidos';
+
+            const btnNew = body.querySelector('.btn-new');
+            if (btnNew) {
+                const newBtnNew = btnNew.cloneNode(true);
+                btnNew.parentNode.replaceChild(newBtnNew, btnNew);
+                newBtnNew.addEventListener('click', (e) => this.openDrawer(e.currentTarget.getAttribute('data-entity')));
+            }
+
+            this.startReadStream('usuarios_permitidos');
+
+        } else if (tab === 'backup') {
+            this.activeEntity = null;
+            body.innerHTML = this.renderBackupView();
+            this.initBackupModule();
+        }
+    },
+
+    renderBackupView() {
+        return `
+            <div class="backup-grid">
+                <div class="table-card">
+                    <div class="table-header-bar">
+                        <span class="table-header-title" style="display:flex;align-items:center;gap:8px;">
+                            <span class="material-symbols-outlined" style="color:var(--c-brand);font-size:20px;">download</span>
+                            Exportar Backup
+                        </span>
+                    </div>
+                    <div class="backup-card-body">
+                        <p class="backup-card-desc">Gera um arquivo <strong>.json</strong> com o snapshot completo de todas as coleções do banco de dados. Guarde este arquivo em local seguro.</p>
+                        <div class="collection-list">
+                            <div class="collection-item"><span class="collection-item-name"><span class="material-symbols-outlined" style="font-size:16px;color:var(--c-text-muted);">group</span> Clientes</span></div>
+                            <div class="collection-item"><span class="collection-item-name"><span class="material-symbols-outlined" style="font-size:16px;color:var(--c-text-muted);">factory</span> Fornecedores</span></div>
+                            <div class="collection-item"><span class="collection-item-name"><span class="material-symbols-outlined" style="font-size:16px;color:var(--c-text-muted);">inventory_2</span> Produtos</span></div>
+                            <div class="collection-item"><span class="collection-item-name"><span class="material-symbols-outlined" style="font-size:16px;color:var(--c-text-muted);">swap_horiz</span> Transações</span></div>
+                            <div class="collection-item"><span class="collection-item-name"><span class="material-symbols-outlined" style="font-size:16px;color:var(--c-text-muted);">admin_panel_settings</span> Usuários</span></div>
+                        </div>
+                        <div style="margin-top:24px;">
+                            <button id="btn-export-backup" class="btn-primary">
+                                <span class="material-symbols-outlined">download</span> Exportar Backup
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="table-card">
+                    <div class="table-header-bar">
+                        <span class="table-header-title" style="display:flex;align-items:center;gap:8px;">
+                            <span class="material-symbols-outlined" style="color:#f59e0b;font-size:20px;">restore</span>
+                            Restaurar Backup
+                        </span>
+                    </div>
+                    <div class="backup-card-body">
+                        <p class="backup-card-desc">Sobrescreve os registros existentes com os dados do arquivo de backup selecionado. Use somente em situação de recuperação de dados.</p>
+                        <div class="alert-warning">
+                            <span class="material-symbols-outlined">warning</span>
+                            <span>Esta operação <strong>sobrescreve</strong> os registros com base no ID de cada documento. Documentos existentes no banco que não estejam no backup não serão removidos.</span>
+                        </div>
+                        <label class="file-input-label" for="input-restore-file">
+                            <span class="material-symbols-outlined" style="font-size:18px;">upload_file</span>
+                            Selecionar arquivo .json
+                        </label>
+                        <input type="file" id="input-restore-file" accept=".json" style="display:none;">
+                        <div id="restore-file-name" class="file-name-display">
+                            <span class="material-symbols-outlined" style="font-size:14px;">info</span>
+                            Nenhum arquivo selecionado
+                        </div>
+                        <div id="restore-preview" style="display:none; margin-top:16px;">
+                            <div class="backup-meta">
+                                <div class="backup-meta-row"><span>Data do backup</span><span id="restore-meta-date">—</span></div>
+                                <div class="backup-meta-row"><span>Total de registros</span><span id="restore-meta-total">—</span></div>
+                            </div>
+                        </div>
+                        <div style="margin-top:20px;">
+                            <button id="btn-restore-backup" class="btn-primary" disabled
+                                style="background:#f59e0b; box-shadow:0 4px 6px rgba(245,158,11,0.25);">
+                                <span class="material-symbols-outlined">restore</span> Restaurar Dados
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    initBackupModule() {
+        document.getElementById('btn-export-backup').addEventListener('click', () => this.exportBackup());
+
+        const fileInput = document.getElementById('input-restore-file');
+        const fileNameEl = document.getElementById('restore-file-name');
+        const restoreBtn = document.getElementById('btn-restore-backup');
+        let pendingBackupData = null;
+
+        fileInput.addEventListener('change', () => {
+            const file = fileInput.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    if (!parsed.version || !parsed.collections) {
+                        showToast('Arquivo inválido: não parece um backup do CioDaModa.', 'error');
+                        return;
+                    }
+                    pendingBackupData = parsed;
+
+                    const cols = ['clientes', 'fornecedores', 'produtos', 'transacoes', 'usuarios_permitidos'];
+                    let total = 0;
+                    cols.forEach(c => { if (parsed.collections[c]) total += parsed.collections[c].length; });
+
+                    fileNameEl.innerHTML = `<span class="material-symbols-outlined" style="font-size:14px;color:var(--c-brand);">description</span> ${escapeHtml(file.name)}`;
+                    fileNameEl.classList.add('has-file');
+
+                    document.getElementById('restore-meta-date').textContent =
+                        parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString('pt-BR') : '—';
+                    document.getElementById('restore-meta-total').textContent = `${total} registros`;
+                    document.getElementById('restore-preview').style.display = 'block';
+                    restoreBtn.disabled = false;
+
+                } catch {
+                    showToast('Erro ao ler o arquivo JSON. Verifique se está corrompido.', 'error');
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        restoreBtn.addEventListener('click', () => {
+            if (pendingBackupData) this.restoreBackup(pendingBackupData);
+        });
+    },
+
+    async exportBackup() {
+        const cols = ['clientes', 'fornecedores', 'produtos', 'transacoes', 'usuarios_permitidos'];
+        const backup = { version: '1.0', exportedAt: new Date().toISOString(), appId: 'ciodamoda', collections: {} };
+        toggleGlobalLoader(true);
+        try {
+            for (const col of cols) {
+                const snap = await getDocs(collection(db, col));
+                backup.collections[col] = snap.docs.map(d => ({ id: d.id, data: d.data() }));
+            }
+            const countersSnap = await getDoc(doc(db, 'metadata', 'counters'));
+            if (countersSnap.exists()) {
+                backup.collections.metadata = { counters: countersSnap.data() };
+            }
+            const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `ciodamoda_backup_${new Date().toISOString().slice(0, 10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('Backup exportado com sucesso.', 'success');
+        } catch (e) {
+            console.error(e);
+            showToast('Erro ao exportar backup: ' + e.message, 'error');
+        } finally {
+            toggleGlobalLoader(false);
+        }
+    },
+
+    async restoreBackup(jsonData) {
+        const cols = ['clientes', 'fornecedores', 'produtos', 'transacoes', 'usuarios_permitidos'];
+        let total = 0;
+        cols.forEach(c => { if (jsonData.collections[c]) total += jsonData.collections[c].length; });
+        const colsCount = cols.filter(c => jsonData.collections[c]?.length > 0).length;
+
+        const confirmado = await showConfirmModal(
+            `Restaurar ${total} registros de ${colsCount} coleções? Os documentos com mesmo ID serão sobrescritos.`
+        );
+        if (!confirmado) return;
+
+        toggleGlobalLoader(true);
+        try {
+            for (const col of cols) {
+                const docs = jsonData.collections[col] || [];
+                for (const item of docs) {
+                    await setDoc(doc(db, col, item.id), item.data);
+                }
+            }
+            if (jsonData.collections.metadata?.counters) {
+                await setDoc(doc(db, 'metadata', 'counters'), jsonData.collections.metadata.counters);
+            }
+            showToast(`Restauração concluída: ${total} registros importados.`, 'success');
+        } catch (e) {
+            console.error(e);
+            showToast('Erro durante a restauração: ' + e.message, 'error');
+        } finally {
+            toggleGlobalLoader(false);
+        }
     },
 
     applyMasks() {
