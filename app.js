@@ -833,6 +833,7 @@ window.DB_Core = {
 
     applyMasks() {
         const maskCNPJ = (v) => v.replace(/\D/g, '').replace(/^(\d{2})(\d)/, "$1.$2").replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3").replace(/\.(\d{3})(\d)/, ".$1/$2").replace(/(\d{4})(\d)/, "$1-$2").slice(0, 18);
+        const maskCPF = (v) => v.replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2').slice(0, 14);
         const maskTel = (v) => v.replace(/\D/g, '').replace(/^(\d{2})(\d)/, "($1) $2").replace(/(\d{4,5})(\d)/, "$1-$2").slice(0, 15);
         const maskMoeda = (v) => {
             v = v.replace(/\D/g, "");
@@ -845,6 +846,9 @@ window.DB_Core = {
 
         document.querySelectorAll('input[id$="cnpj"]').forEach(el => {
             el.addEventListener('input', (e) => e.target.value = maskCNPJ(e.target.value));
+        });
+        document.querySelectorAll('input[id$="cpf-comprador"], input[id$="cpf-vendedor"]').forEach(el => {
+            el.addEventListener('input', (e) => e.target.value = maskCPF(e.target.value));
         });
         document.querySelectorAll('input[id$="telefone"]').forEach(el => {
             el.addEventListener('input', (e) => e.target.value = maskTel(e.target.value));
@@ -862,45 +866,55 @@ window.DB_Core = {
         const opName = docId ? "Editando" : "Novo";
 
         if (entityKey === 'clientes') {
-            titleEl.innerText = `${opName} Cliente B2B`;
+            titleEl.innerText = `${opName} Cliente`;
             formHTML = `
-                <div class="form-section-title">Dados de Registro</div>
-                <div class="form-group">
-                    <label>Razão Social</label>
-                    <input type="text" id="ipt-razao" required class="input-field" placeholder="Ex: Corporação S.A.">
-                </div>
-                <div class="form-group">
-                    <label>Nome Fantasia</label>
-                    <input type="text" id="ipt-fantasia" required class="input-field" placeholder="Ex: Corp Brands">
-                </div>
                 <div class="form-row">
                     <div>
-                        <label>CNPJ</label>
-                        <input type="text" id="ipt-cnpj" required class="input-field" placeholder="00.000.000/0000-00" maxlength="18">
+                        <label>Nome</label>
+                        <input type="text" id="ipt-comprador" required class="input-field" placeholder="Nome completo do contato">
                     </div>
                     <div>
-                        <label>E-mail Pessoal / Corporativo</label>
-                        <input type="email" id="ipt-email" required class="input-field" placeholder="contato@empresa.com">
+                        <label>CPF</label>
+                        <input type="text" id="ipt-cpf-comprador" class="input-field" placeholder="000.000.000-00" maxlength="14">
                     </div>
                 </div>
                 <div class="form-row">
                     <div>
-                        <label>Insc. Estadual (IE)</label>
-                        <input type="text" id="ipt-ie" class="input-field" placeholder="Opcional">
-                    </div>
-                    <div>
-                        <label>Telefone Principal</label>
+                        <label>Telefone</label>
                         <input type="text" id="ipt-telefone" required class="input-field" placeholder="(00) 00000-0000" maxlength="15">
                     </div>
+                    <div>
+                        <label>E-mail</label>
+                        <input type="email" id="ipt-email" required class="input-field" placeholder="contato@email.com">
+                    </div>
                 </div>
-                <div class="form-section-title" style="margin-top: 32px;">Operacional</div>
                 <div class="form-group">
-                    <label>Nome do Comprador(a)</label>
-                    <input type="text" id="ipt-comprador" required class="input-field" placeholder="Responsável pelas requisições">
+                    <label>Endereço</label>
+                    <input type="text" id="ipt-endereco" required class="input-field" placeholder="Endereço completo de entrega/faturamento">
+                </div>
+                <div class="form-row">
+                    <div>
+                        <label>Nome da Empresa</label>
+                        <input type="text" id="ipt-nome-empresa" class="input-field" placeholder="Como é conhecida no mercado">
+                    </div>
+                    <div>
+                        <label>CNPJ / CPF da Empresa</label>
+                        <input type="text" id="ipt-cnpj" class="input-field" placeholder="CPF ou CNPJ" maxlength="18">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div>
+                        <label>Razão Social</label>
+                        <input type="text" id="ipt-razao" class="input-field" placeholder="Denominação legal registrada">
+                    </div>
+                    <div>
+                        <label>Nome Fantasia</label>
+                        <input type="text" id="ipt-fantasia" class="input-field" placeholder="Nome comercial da marca">
+                    </div>
                 </div>
                 <div class="form-group">
-                    <label>Endereço de Entrega/Faturamento</label>
-                    <input type="text" id="ipt-endereco" required class="input-field" placeholder="Seu local logístico completo">
+                    <label>Inscrição Estadual</label>
+                    <input type="text" id="ipt-ie" class="input-field" placeholder="Opcional / Isento">
                 </div>
             `;
         } else if (entityKey === 'fornecedores') {
@@ -936,9 +950,13 @@ window.DB_Core = {
                         <input type="text" id="ipt-vendedor" required class="input-field" placeholder="Nome do representante base">
                     </div>
                     <div>
-                        <label>Qualificação / Cargo</label>
-                        <input type="text" id="ipt-contato" required class="input-field" placeholder="Ex: Gerente Região Sul">
+                        <label>CPF do Vendedor</label>
+                        <input type="text" id="ipt-cpf-vendedor" class="input-field" placeholder="000.000.000-00" maxlength="14">
                     </div>
+                </div>
+                <div class="form-group">
+                    <label>Qualificação / Cargo</label>
+                    <input type="text" id="ipt-contato" required class="input-field" placeholder="Ex: Gerente Região Sul">
                 </div>
                 <div class="form-row">
                     <div>
@@ -1270,14 +1288,16 @@ window.DB_Core = {
         try {
             if (this.activeEntity === 'clientes') {
                 payload = {
+                    comprador: document.getElementById('ipt-comprador').value,
+                    cpf_comprador: document.getElementById('ipt-cpf-comprador').value,
+                    telefone: document.getElementById('ipt-telefone').value,
+                    email: document.getElementById('ipt-email').value,
+                    endereco: document.getElementById('ipt-endereco').value,
+                    nome_empresa: document.getElementById('ipt-nome-empresa').value,
+                    cnpj: document.getElementById('ipt-cnpj').value,
                     razao: document.getElementById('ipt-razao').value,
                     fantasia: document.getElementById('ipt-fantasia').value,
-                    cnpj: document.getElementById('ipt-cnpj').value,
-                    email: document.getElementById('ipt-email').value,
                     ie: document.getElementById('ipt-ie').value,
-                    telefone: document.getElementById('ipt-telefone').value,
-                    comprador: document.getElementById('ipt-comprador').value,
-                    endereco: document.getElementById('ipt-endereco').value,
                     timestamp: new Date()
                 };
             } else if (this.activeEntity === 'fornecedores') {
@@ -1288,6 +1308,7 @@ window.DB_Core = {
                     ie: document.getElementById('ipt-ie').value,
                     endereco: document.getElementById('ipt-endereco').value,
                     vendedor: document.getElementById('ipt-vendedor').value,
+                    cpf_vendedor: document.getElementById('ipt-cpf-vendedor').value,
                     contato: document.getElementById('ipt-contato').value,
                     telefone: document.getElementById('ipt-telefone').value,
                     email: document.getElementById('ipt-email').value,
